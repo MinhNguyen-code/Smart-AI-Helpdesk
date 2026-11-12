@@ -1,0 +1,264 @@
+@startuml Smart_IT_Helpdesk_ERD
+hide circle
+skinparam roundcorner 5
+skinparam linetype ortho
+skinparam shadowing false
+skinparam ArrowColor #2688d4
+skinparam entity {
+  BackgroundColor White
+  BorderColor #2688d4
+  FontColor #222222
+}
+left to right direction
+
+' SMART IT HELPDESK - reviewed conceptual/logical ERD
+' All application timestamps are stored in UTC. Convert to local time in the UI.
+' Role model below preserves the four roles from the supplied ERD. If the project
+' specification only wants three roles, merge it_manager/admin or update the spec.
+' Reopening a resolved ticket should transition it to open/in_progress and be recorded
+' in ticket_status_histories; it does not need a permanent "reopened" status value.
+
+entity "departments\n(Phòng ban)" as departments {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * name : VARCHAR(150) <<UQ>>
+  manager_id : BIGINT UNSIGNED <<FK, nullable>>
+  created_at : DATETIME(3)
+  updated_at : DATETIME(3)
+}
+
+entity "users\n(Tài khoản)" as users {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  department_id : BIGINT UNSIGNED <<FK, nullable>>
+  * name : VARCHAR(150)
+  * email : VARCHAR(254) <<UQ>>
+  * password_hash : VARCHAR(255)
+  * role : ENUM('end_user','it_helpdesk','it_manager','admin')
+  * is_active : BOOLEAN
+  created_at : DATETIME(3)
+  updated_at : DATETIME(3)
+}
+
+entity "ticket_categories\n(Danh mục sự cố)" as ticket_categories {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * name : VARCHAR(120) <<UQ>>
+  default_priority : ENUM('P1','P2','P3','P4')
+  * is_active : BOOLEAN
+  created_at : DATETIME(3)
+  updated_at : DATETIME(3)
+}
+
+entity "tickets\n(Ticket chính)" as tickets {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * ticket_code : VARCHAR(32) <<UQ>>
+  * reporter_id : BIGINT UNSIGNED <<FK>>
+  assignee_id : BIGINT UNSIGNED <<FK, nullable>>
+  category_id : BIGINT UNSIGNED <<FK, nullable>>
+  * title : VARCHAR(200)
+  * raw_description : TEXT
+  normalized_description : TEXT
+  * impact_level : ENUM('user','department','organization')
+  * priority : ENUM('P1','P2','P3','P4')
+  * status : ENUM('open','in_progress','pending_user','resolved','closed')
+  priority_reason : TEXT
+  resolved_at : DATETIME(3)
+  closed_at : DATETIME(3)
+  created_at : DATETIME(3)
+  updated_at : DATETIME(3)
+}
+
+entity "ticket_attachments\n(File đính kèm)" as ticket_attachments {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * ticket_id : BIGINT UNSIGNED <<FK>>
+  * uploader_id : BIGINT UNSIGNED <<FK>>
+  * storage_key : VARCHAR(500)
+  * original_filename : VARCHAR(255)
+  * mime_type : VARCHAR(127)
+  * size_bytes : BIGINT UNSIGNED
+  created_at : DATETIME(3)
+}
+
+entity "ticket_comments\n(Phản hồi / ghi chú)" as ticket_comments {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * ticket_id : BIGINT UNSIGNED <<FK>>
+  * user_id : BIGINT UNSIGNED <<FK>>
+  * message : TEXT
+  * is_internal_note : BOOLEAN
+  created_at : DATETIME(3)
+  updated_at : DATETIME(3)
+}
+
+entity "ticket_status_histories\n(Lịch sử trạng thái)" as ticket_status_histories {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * ticket_id : BIGINT UNSIGNED <<FK>>
+  changed_by : BIGINT UNSIGNED <<FK, nullable>>
+  old_status : VARCHAR(32)
+  * new_status : VARCHAR(32)
+  note : TEXT
+  * changed_at : DATETIME(3)
+}
+
+entity "priority_rules\n(Rule từ khóa)" as priority_rules {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  category_id : BIGINT UNSIGNED <<FK, nullable>>
+  created_by : BIGINT UNSIGNED <<FK, nullable>>
+  * keyword : VARCHAR(200)
+  * normalized_keyword : VARCHAR(200)
+  * match_type : ENUM('contains','whole_word','exact')
+  * assigned_priority : ENUM('P1','P2','P3','P4')
+  * is_active : BOOLEAN
+  description : VARCHAR(500)
+  created_at : DATETIME(3)
+  updated_at : DATETIME(3)
+}
+
+entity "ticket_triage_runs\n(Lịch sử phân loại tự động)" as ticket_triage_runs {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * ticket_id : BIGINT UNSIGNED <<FK>>
+  final_priority : ENUM('P1','P2','P3','P4')
+  * reason : TEXT
+  * run_at : DATETIME(3)
+}
+
+entity "ticket_triage_rule_matches\n(Rule khớp trong lần phân loại)" as ticket_triage_rule_matches {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * triage_run_id : BIGINT UNSIGNED <<FK>>
+  * priority_rule_id : BIGINT UNSIGNED <<FK>>
+  matched_keyword : VARCHAR(200)
+  assigned_priority : ENUM('P1','P2','P3','P4')
+}
+
+entity "sla_policies\n(Chính sách SLA)" as sla_policies {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * priority_level : ENUM('P1','P2','P3','P4') <<UQ>>
+  * response_time_mins : INT UNSIGNED
+  * resolution_time_mins : INT UNSIGNED
+  * is_active : BOOLEAN
+  updated_at : DATETIME(3)
+}
+
+entity "ticket_slas\n(SLA được áp dụng cho ticket)" as ticket_slas {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * ticket_id : BIGINT UNSIGNED <<FK, UQ>>
+  * sla_policy_id : BIGINT UNSIGNED <<FK>>
+  * priority_snapshot : ENUM('P1','P2','P3','P4')
+  * response_target_mins : INT UNSIGNED
+  * resolution_target_mins : INT UNSIGNED
+  response_due_at : DATETIME(3)
+  resolution_due_at : DATETIME(3)
+  first_responded_at : DATETIME(3)
+  response_breached_at : DATETIME(3)
+  resolution_breached_at : DATETIME(3)
+  paused_at : DATETIME(3)
+  accumulated_pause_seconds : BIGINT UNSIGNED
+  created_at : DATETIME(3)
+  updated_at : DATETIME(3)
+}
+
+entity "sla_events\n(Sự kiện / cảnh báo SLA)" as sla_events {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * ticket_sla_id : BIGINT UNSIGNED <<FK>>
+  * event_type : ENUM('warning','breach','escalation')
+  * sla_type : ENUM('response','resolution')
+  * channel : ENUM('in_app','email','slack')
+  recipient : VARCHAR(254)
+  * delivery_status : ENUM('pending','sent','failed')
+  * idempotency_key : VARCHAR(190) <<UQ>>
+  scheduled_at : DATETIME(3)
+  executed_at : DATETIME(3)
+  error_message : TEXT
+}
+
+entity "notifications\n(Thông báo trong ứng dụng)" as notifications {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  * user_id : BIGINT UNSIGNED <<FK>>
+  ticket_id : BIGINT UNSIGNED <<FK, nullable>>
+  * type : VARCHAR(80)
+  * title : VARCHAR(200)
+  * message : TEXT
+  read_at : DATETIME(3)
+  created_at : DATETIME(3)
+}
+
+entity "audit_logs\n(Nhật ký kiểm toán hệ thống)" as audit_logs {
+  * id : BIGINT UNSIGNED <<PK>>
+  --
+  actor_user_id : BIGINT UNSIGNED <<FK, nullable>>
+  * entity_type : VARCHAR(80)
+  * entity_id : BIGINT UNSIGNED
+  * action : VARCHAR(80)
+  field_name : VARCHAR(100)
+  old_value : TEXT
+  new_value : TEXT
+  created_at : DATETIME(3)
+}
+
+' Department membership: each user belongs to zero or one department.
+departments |o--o{ users : department_id
+' Department manager: each department has zero or one manager; a user may manage departments.
+users |o--o{ departments : manager_id
+
+' Ticket ownership and assignment.
+users ||--o{ tickets : reporter_id
+users |o--o{ tickets : assignee_id
+ticket_categories |o--o{ tickets : category_id
+
+'ticket-related records.
+tickets ||--o{ ticket_attachments
+tickets ||--o{ ticket_comments
+tickets ||--o{ ticket_status_histories
+users ||--o{ ticket_attachments : uploader_id
+users ||--o{ ticket_comments : user_id
+users |o--o{ ticket_status_histories : changed_by
+
+' Rule-based triage and explainability.
+ticket_categories |o--o{ priority_rules : category_id
+users |o--o{ priority_rules : created_by
+tickets ||--o{ ticket_triage_runs
+ticket_triage_runs ||--o{ ticket_triage_rule_matches
+priority_rules ||--o{ ticket_triage_rule_matches
+
+' SLA snapshots keep the deadline/targets applied to a ticket stable when policies change.
+sla_policies ||--o{ ticket_slas
+tickets ||--|| ticket_slas
+ticket_slas ||--o{ sla_events
+
+' User-facing notifications and audit actors.
+users ||--o{ notifications
+ tickets |o--o{ notifications
+users |o--o{ audit_logs : actor_user_id
+
+note bottom of tickets
+  Priority policy to document in PROJECT_SPEC.md:
+  1) strongest matching active rule wins (P1 is highest);
+  2) if no rule matches, use category default or P3;
+  3) apply the configured impact floor;
+  4) save final priority and explanation in the triage run.
+end note
+
+note bottom of ticket_slas
+  Keep response SLA and resolution SLA separate.
+  Store target-minute snapshots and due timestamps.
+  Define business-hours and Pending User pause policy explicitly.
+end note
+
+note bottom of audit_logs
+  entity_type/entity_id is a polymorphic target and cannot
+  have a conventional FK to every entity table. If strict FK
+  enforcement is required for ticket changes, add ticket_audit_logs.
+end note
+
+@enduml

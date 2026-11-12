@@ -1,0 +1,238 @@
+@startuml Smart_IT_Helpdesk_SaaS_PROPOSED
+title Phase 4.5 target — 012–016 verified on dedicated test
+hide circle
+skinparam linetype ortho
+skinparam shadowing false
+
+entity users {
+  * id : BIGINT UNSIGNED <<PK>>
+  * email : VARCHAR(254) <<global UQ>>
+  * password_hash : VARCHAR(255)
+  * role : legacy enum, retained
+  * is_active : BOOLEAN
+}
+entity organizations <<P4.5-02 test>> {
+  * id : BIGINT UNSIGNED <<PK>>
+  * name : VARCHAR(160)
+  * slug : VARCHAR(80) ASCII case-insensitive <<UQ>>
+  * status : active / suspended
+  * created_at : DATETIME(3)
+  * updated_at : DATETIME(3)
+}
+entity organization_memberships <<P4.5-02 test>> {
+  * id : BIGINT UNSIGNED <<PK>>
+  * organization_id : BIGINT UNSIGNED <<FK>>
+  * user_id : BIGINT UNSIGNED <<FK>>
+  * role : admin / it_agent / end_user
+  * status : active / revoked
+  * created_at : DATETIME(3)
+  * updated_at : DATETIME(3)
+  --
+  UQ : organization_id, user_id
+  IX : user_id, status, organization_id
+  IX : organization_id, status, role
+}
+entity organization_invitations <<proposed>> {
+  * id : BIGINT UNSIGNED <<PK>>
+  * organization_id : BIGINT UNSIGNED <<FK>>
+  * invited_email : VARCHAR(254)
+  * intended_role : membership role
+  * token_hash : CHAR(64) <<UQ>>
+  * expires_at : DATETIME(3)
+  inviter_user_id : BIGINT UNSIGNED <<FK>>
+  accepted_at : DATETIME(3), nullable
+  revoked_at : DATETIME(3), nullable
+}
+entity user_sessions {
+  * id : BIGINT UNSIGNED <<PK>>
+  user_id : BIGINT UNSIGNED <<FK, nullable>>
+  * token_hash : CHAR(64) <<UQ>>
+  session_data : LONGTEXT
+  active_organization_id : BIGINT UNSIGNED, nullable selection
+  * organization_revision : BIGINT UNSIGNED
+  expires_at : DATETIME(3)
+  revoked_at : DATETIME(3), nullable
+}
+entity incident_categories {
+  * id : BIGINT UNSIGNED <<PK>>
+  organization_id : BIGINT UNSIGNED <<FK, nullable expand>>
+  * ownership_scope : DECIMAL(20,0), stored generated
+  * name : VARCHAR(120)
+  is_active : BOOLEAN
+  --
+  UQ : ownership_scope, id
+  UQ : ownership_scope, name
+}
+entity priority_rules {
+  * id : BIGINT UNSIGNED <<PK>>
+  organization_id : BIGINT UNSIGNED <<FK, nullable expand>>
+  * ownership_scope : DECIMAL(20,0), stored generated
+  * keyword : VARCHAR(200)
+  normalized_keyword : VARCHAR(200)
+  active_normalized_keyword : generated, active legacy only
+  tenant_active_keyword : generated, NULL if inactive
+  * priority : P1 / P2 / P3 / P4
+  * is_active : BOOLEAN
+  * revision : INT UNSIGNED DEFAULT 1
+  conditions : JSON nullable, validated v1 or v2
+  --
+  UQ : ownership_scope, id
+  UQ : ownership_scope, tenant_active_keyword
+}
+entity sla_policies {
+  * id : BIGINT UNSIGNED <<PK>>
+  organization_id : BIGINT UNSIGNED <<FK, nullable expand>>
+  * ownership_scope : DECIMAL(20,0), stored generated
+  * priority : P1 / P2 / P3 / P4
+  * response_target_minutes : SMALLINT UNSIGNED
+  * resolution_target_minutes : SMALLINT UNSIGNED
+  * calendar_mode : continuous
+  * revision : INT UNSIGNED DEFAULT 1
+  * is_active : BOOLEAN
+  --
+  UQ : ownership_scope, id
+  UQ : ownership_scope, priority
+}
+entity tickets {
+  * id : BIGINT UNSIGNED <<PK, preserved>>
+  organization_id : BIGINT UNSIGNED <<FK, nullable expand>>
+  * ownership_scope : DECIMAL(20,0), stored generated
+  * ticket_number : VARCHAR(32) <<global UQ, preserved>>
+  * reporter_id : BIGINT UNSIGNED
+  assignee_id : BIGINT UNSIGNED, nullable
+  category_id : BIGINT UNSIGNED, nullable
+  * sla_policy_id : BIGINT UNSIGNED
+  * title : VARCHAR(255)
+  * description : TEXT
+  * impact : individual / department / organization
+  * priority : P1 / P2 / P3 / P4
+  * status : open / in_progress / resolved
+  triage_reason : MEDIUMTEXT
+  triage_decision : JSON nullable, engine/base/final/SLA evidence
+  response_sla_minutes : preserved snapshot
+  resolution_sla_minutes : preserved snapshot
+  response_deadline_at : preserved DATETIME(3)
+  resolution_deadline_at : preserved DATETIME(3)
+  --
+  UQ : ownership_scope, id
+  composite FK : organization_id, reporter_id -> memberships
+  composite FK : organization_id, assignee_id -> memberships
+  composite FK : ownership_scope, category_id -> categories
+  composite FK : ownership_scope, sla_policy_id -> SLA
+}
+entity ticket_priority_rule_matches {
+  * id : BIGINT UNSIGNED <<PK>>
+  organization_id : BIGINT UNSIGNED <<FK, nullable expand>>
+  * ownership_scope : DECIMAL(20,0), stored generated
+  * ticket_id : BIGINT UNSIGNED
+  priority_rule_id : BIGINT UNSIGNED, nullable legacy
+  * keyword_snapshot : VARCHAR(200)
+  * priority_snapshot : priority
+  rule_evidence : JSON nullable, revision/keyword/conditions/trace
+  --
+  composite FK : ownership_scope, ticket_id -> tickets
+  composite FK : ownership_scope, priority_rule_id -> rules
+}
+entity ticket_creation_idempotency {
+  * id : BIGINT UNSIGNED <<PK>>
+  organization_id : BIGINT UNSIGNED <<FK, nullable expand>>
+  * ownership_scope : DECIMAL(20,0), stored generated
+  * user_id : BIGINT UNSIGNED <<FK>>
+  * ticket_id : BIGINT UNSIGNED <<UQ>>
+  * key_hash : CHAR(64)
+  * request_hash : CHAR(64)
+  --
+  UQ : ownership_scope, user_id, key_hash
+  composite FK : ownership_scope, ticket_id -> tickets
+}
+entity ticket_attachments {
+  * id : BIGINT UNSIGNED <<PK>>
+  * ticket_id : BIGINT UNSIGNED <<FK, owner parent>>
+  uploaded_by : BIGINT UNSIGNED <<global identity FK>>
+  * storage_key : VARCHAR(191) <<UQ, preserved>>
+}
+entity ticket_comments {
+  * id : BIGINT UNSIGNED <<PK>>
+  * ticket_id : BIGINT UNSIGNED <<FK, owner parent>>
+  author_id : BIGINT UNSIGNED <<global identity FK>>
+  * visibility : public / internal
+  * body : TEXT
+}
+entity ticket_status_histories {
+  * id : BIGINT UNSIGNED <<PK>>
+  * ticket_id : BIGINT UNSIGNED <<FK, owner parent>>
+  actor_id : BIGINT UNSIGNED <<global identity FK>>
+  from_status : nullable
+  * to_status : existing status
+  * created_at : DATETIME(3), preserved
+}
+entity sla_events {
+  * id : BIGINT UNSIGNED <<PK>>
+  * ticket_id : BIGINT UNSIGNED <<FK, owner parent>>
+  * sla_type : response / resolution
+  * event_type : existing enum
+  * dedupe_key : VARCHAR(191) <<UQ>>
+}
+entity audit_logs {
+  * id : BIGINT UNSIGNED <<PK>>
+  organization_id : BIGINT UNSIGNED <<FK, nullable expand/global>>
+  scope : tenant / security_global, proposed discriminator
+  actor_id : BIGINT UNSIGNED <<global identity FK>>
+  * action : VARCHAR(80)
+  * entity_type : VARCHAR(80)
+  entity_id : BIGINT UNSIGNED, polymorphic validated in service
+  * created_at : DATETIME(3), preserved
+}
+entity notifications {
+  * id : BIGINT UNSIGNED <<PK>>
+  organization_id : BIGINT UNSIGNED <<FK, nullable expand>>
+  * recipient_id : BIGINT UNSIGNED <<FK>>
+  dedupe_key : VARCHAR(191), nullable
+  --
+  composite FK : organization_id, recipient_id -> memberships
+  UQ : dedupe_key (legacy, scoped key proposed)
+}
+entity organization_rule_write_locks <<014 verified on test>> {
+  * organization_id : BIGINT UNSIGNED <<PK, FK>>
+}
+
+organizations ||--o{ organization_memberships
+users ||--o{ organization_memberships
+users ||--o{ user_sessions
+organizations ||--o{ organization_invitations
+organizations ||--o{ incident_categories
+organizations ||--o{ priority_rules
+organizations ||--o{ sla_policies
+organizations ||--o{ tickets
+organizations ||--o| organization_rule_write_locks
+tickets ||--o{ ticket_priority_rule_matches
+priority_rules |o--o{ ticket_priority_rule_matches
+tickets ||--o{ ticket_creation_idempotency
+tickets ||--o{ ticket_attachments
+tickets ||--o{ ticket_comments
+tickets ||--o{ ticket_status_histories
+tickets ||--o{ sla_events
+organizations |o--o{ audit_logs
+organizations ||--o{ notifications
+users ||--o{ notifications
+
+note right of organization_memberships
+  010/011 verified on dedicated test MySQL.
+  Both foreign keys use RESTRICT for DELETE and UPDATE.
+  One membership per user and organization, including revoked.
+  Other tenant ownership and session context are proposed.
+end note
+note bottom of tickets
+  012/013 use nullable organization IDs and stored scope (-1 for legacy).
+  Composite FK checks require matching scope, even for legacy rows.
+  Backfill needs approved mapping, backup and staged key transition.
+  NOT NULL and operational cutover follow validation.
+  Historical IDs, timestamps, deadlines and snapshots are preserved.
+end note
+note bottom of user_sessions
+  03A stores active selection and revision on the server session row.
+  Session row lock serializes changes and operational transactions.
+  Membership and organization are rechecked and locked through commit.
+  Global users.role never grants cross-tenant admin.
+end note
+@enduml
