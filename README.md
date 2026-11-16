@@ -90,19 +90,3 @@ D:\Smart IT Helpdesk
    npm test
    ```
 
----
-
-## 4. Tài khoản Đề xuất & Vai trò (Role Mapping)
-
-| Gmail | Vai trò | Quyền hạn chính |
-|---|---|---|
-| `binmin109@gmail.com` | **ADMIN** | Quản trị quy tắc từ khóa, cấu hình SLA, toàn quyền quản trị ticket & người dùng, xem báo cáo thống kê |
-| `nguyenbinhminh.1009.vn@gmail.com` | **IT_AGENT** | Tiếp nhận ticket, cập nhật trạng thái, trao đổi giải quyết sự cố, nhận cảnh báo SLA |
-| `nguyenbinhminh.2006.vn@gmail.com` | **END_USER** | Tạo ticket báo lỗi, theo dõi tiến độ ticket cá nhân, trao đổi phản hồi |
-
----
-
-## 5. Trạng thái Dự án
-
-- **Day 1 — Foundation**: Đang triển khai & nghiệm thu (PASS/PARTIAL/BLOCKED chi tiết trong `docs/DAILY_PROGRESS.md`).
-- **Tài liệu tham chiếu**: Đã đối soát toàn diện `Diagrams/` và `Wireframe/`.
