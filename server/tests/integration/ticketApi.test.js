@@ -125,6 +125,29 @@ test('HTTP creates a classified ticket, enforces ownership and persists lifecycl
       .set('Origin', config.clientUrl).set('X-CSRF-Token', unique).send({ message: 'Đang xử lý' });
     assert.equal(reply.status, 201);
     assert.ok((await db('tickets').where('id', ticketId).first()).first_response_at);
+    const internal = await request(app).post(`/api/v1/tickets/${ticketId}/comments`).set('Cookie', agent)
+      .set('Origin', config.clientUrl).set('X-CSRF-Token', unique)
+      .send({ message: `Internal ${unique}`, visibility: 'internal' });
+    assert.equal(internal.status, 201);
+    const publicComments = await request(app).get(`/api/v1/tickets/${ticketId}/comments`).set('Cookie', reporter);
+    assert.equal(publicComments.status, 200);
+    assert.ok(publicComments.body.some(comment => comment.id === reply.body.id));
+    assert.ok(!publicComments.body.some(comment => comment.id === internal.body.id));
+    for (const staff of [agent, admin]) {
+      const staffDetail = await request(app).get(`/api/v1/tickets/${ticketId}`).set('Cookie', staff);
+      assert.equal(staffDetail.status, 200);
+      assert.ok(staffDetail.body.comments.some(comment => comment.id === internal.body.id));
+      assert.ok(staffDetail.body.history.some(event => event.event_type === 'COMMENT_ADDED'
+        && event.new_value === String(internal.body.id)));
+    }
+    const ownerDetail = await request(app).get(`/api/v1/tickets/${ticketId}`).set('Cookie', reporter);
+    assert.equal(ownerDetail.status, 200);
+    assert.ok(ownerDetail.body.comments.some(comment => comment.id === reply.body.id));
+    assert.ok(!ownerDetail.body.comments.some(comment => comment.id === internal.body.id));
+    assert.ok(ownerDetail.body.history.some(event => event.event_type === 'COMMENT_ADDED'
+      && event.new_value === String(reply.body.id)));
+    assert.ok(!ownerDetail.body.history.some(event => event.event_type === 'COMMENT_ADDED'
+      && event.new_value === String(internal.body.id)));
     const assignment = await request(app).patch(`/api/v1/tickets/${ticketId}/assign`).set('Cookie', agent)
       .set('Origin', config.clientUrl).set('X-CSRF-Token', unique).send({ assignee_id: userIds[2], version: 2 });
     assert.equal(assignment.status, 200);
