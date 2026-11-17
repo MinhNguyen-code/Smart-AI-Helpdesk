@@ -2,6 +2,8 @@
 
 **Ngày:** 12/11/2026. **Trạng thái:** PARTIAL vì nghiệm thu MVP cuối chưa hoàn tất. Đây là kiểm tra cấu trúc đọc dữ liệu; không xóa hoặc di chuyển file.
 
+**Lưu ý hiện trạng:** Đây là snapshot ngày 12/11, nên số migration, ảnh chụp và khoảng trống nêu dưới đây là bằng chứng lịch sử, không phải số liệu repository hiện tại. Kiểm kê mới và đề xuất di chuyển giới hạn xem `docs/REPOSITORY_ORGANIZATION_PLAN.md`; các báo cáo frontend có ngày tháng đã được chuyển vào `docs/phase-reports/` trong Bước 2 được chủ dự án duyệt.
+
 ## Cây thư mục chính
 
 ```text
