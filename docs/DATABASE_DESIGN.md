@@ -3,12 +3,13 @@
 ## 1. Cơ Sở Dữ Liệu Mục Tiêu & Nguyên Tắc An Toàn
 
 - **Hệ quản trị CSDL**: MySQL 8.x
-- **Development Database**: `smart_it_helpdesk_dev`
-- **Testing Database**: `smart_it_helpdesk_test`
-- **Múi giờ lưu trữ**: Toàn bộ mốc thời gian lưu chuẩn UTC (`DATETIME(3)` hoặc `TIMESTAMP`). Tầng giao diện chịu trách nhiệm chuyển đổi sang giờ cục bộ Việt Nam (`Asia/Ho_Chi_Minh` - GMT+7).
+- **Development Database**: `smart_it_helpdesk_new_dev`
+- **Testing Database**: `smart_it_helpdesk_new_test`
+- Hai schema lịch sử `smart_it_helpdesk_dev` và `smart_it_helpdesk_test` không thuộc phạm vi ghi của ứng dụng này.
+- **Múi giờ phiên kết nối**: Knex đặt `SET time_zone = '+00:00'` cho mọi kết nối; `mysql2` giải mã ngày giờ theo UTC. Ứng dụng hiển thị giờ địa phương tại frontend.
 
 ### Nguyên Tắc An Toàn Tuyệt Đối (Accidental Data Loss Prevention)
-1. Chỉ thực hiện thao tác tạo hoặc cập nhật bảng trên đúng database đích đã xác minh (`smart_it_helpdesk_dev` hoặc `smart_it_helpdesk_test`).
+1. Chỉ thực hiện thao tác tạo hoặc cập nhật bảng trên đúng database đích đã xác minh (`smart_it_helpdesk_new_dev` hoặc `smart_it_helpdesk_new_test`).
 2. Tuyệt đối không chạy lệnh `DROP DATABASE`, `TRUNCATE` hay `DELETE` không có điều kiện `WHERE` trên môi trường đang hoạt động.
 3. Không tự ý sửa đổi hoặc xóa các cơ sở dữ liệu khác đang tồn tại trên máy chủ MySQL của hệ thống.
 4. Mọi thay đổi cấu trúc bảng bắt buộc phải thông qua Knex Migration có phiên bản rõ ràng (Versioned Migrations).
@@ -40,19 +41,21 @@ Lưu trữ danh sách người dùng được phê duyệt và thông tin địn
 
 ### 2.3 Bảng `tickets` (Ticket sự cố)
 - `id`: INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-- `ticket_code`: VARCHAR(32) NOT NULL UNIQUE (Định dạng `#INC-1001`, `#INC-1002`)
+- `ticket_code`: VARCHAR(32) NOT NULL UNIQUE (UUID hex 32 ký tự; giao diện thêm `#`)
 - `reporter_id`: INT UNSIGNED NOT NULL (FK -> `users.id`)
 - `assignee_id`: INT UNSIGNED NULL (FK -> `users.id`)
 - `category_id`: INT UNSIGNED NULL (FK -> `categories.id`)
 - `title`: VARCHAR(255) NOT NULL
 - `description`: TEXT NOT NULL
 - `impact`: ENUM('individual', 'department', 'organization') NOT NULL DEFAULT 'individual'
-- `priority`: ENUM('URGENT', 'NORMAL') NOT NULL DEFAULT 'NORMAL'
+- `priority`: ENUM có `P1`, `P2`, `P3`, `P4` (và giá trị legacy `URGENT`, `NORMAL` để tương thích migration); mặc định `P3`.
 - `status`: ENUM('OPEN', 'IN_PROGRESS', 'RESOLVED') NOT NULL DEFAULT 'OPEN'
 - `priority_reason`: TEXT NULL (Lý do gán ưu tiên từ Rule Engine)
+- `priority_evidence`: JSON NULL (snapshot impact và quy tắc đã khớp tại lúc tạo)
 - `response_deadline_at`: DATETIME NULL (Hạn phản hồi theo SLA)
 - `resolution_deadline_at`: DATETIME NULL (Hạn giải quyết theo SLA)
 - `first_response_at`: DATETIME NULL (Thời điểm phản hồi đầu tiên của kỹ thuật viên)
+- `acknowledged_at`: DATETIME NULL (ACK tường minh của staff, độc lập với phản hồi public)
 - `resolved_at`: DATETIME NULL (Thời điểm chuyển sang RESOLVED)
 - `version`: INT UNSIGNED NOT NULL DEFAULT 1 (Quản lý xung đột đồng thời - Optimistic Locking)
 - `created_at`: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -94,15 +97,15 @@ Lưu trữ danh sách người dùng được phê duyệt và thông tin địn
 - `id`: INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
 - `keyword`: VARCHAR(200) NOT NULL (Từ khóa hiển thị, VD: "server sập")
 - `normalized_keyword`: VARCHAR(200) NOT NULL (Từ khóa chuẩn hóa không dấu, chữ thường, VD: "server sap")
-- `priority`: ENUM('URGENT', 'NORMAL') NOT NULL DEFAULT 'URGENT'
+- `priority`: ENUM có `P1`–`P4` và giá trị legacy cho migration; mặc định `P1`.
 - `is_active`: BOOLEAN NOT NULL DEFAULT TRUE
 - `created_at`: TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 - `updated_at`: TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-- *Chỉ mục*: `idx_priority_rules_active`, `idx_priority_rules_norm_keyword`
+- *Chỉ mục*: `idx_priority_rules_active`, `idx_priority_rules_norm_kw`, unique `uq_priority_rules_normalized_keyword`
 
 ### 2.8 Bảng `sla_policies` (Chính sách thời gian cam kết SLA)
 - `id`: INT UNSIGNED AUTO_INCREMENT PRIMARY KEY
-- `priority`: ENUM('URGENT', 'NORMAL') NOT NULL UNIQUE
+- `priority`: ENUM có `P1`–`P4` và giá trị legacy cho migration; UNIQUE.
 - `response_minutes`: INT UNSIGNED NOT NULL
 - `resolution_minutes`: INT UNSIGNED NOT NULL
 - `is_active`: BOOLEAN NOT NULL DEFAULT TRUE
@@ -132,7 +135,13 @@ Lưu trữ danh sách người dùng được phê duyệt và thông tin địn
 - *Chỉ mục*: `idx_audit_logs_actor`, `idx_audit_logs_action`
 
 ### 2.11 Bảng `sessions` (Lưu trữ phiên đăng nhập MySQL)
-Được quản lý tự động bởi `express-mysql-session`:
+Được quản lý bởi `server/src/db/sessionStore.js` qua `express-session`:
 - `session_id`: VARCHAR(128) COLLATE utf8mb4_bin NOT NULL PRIMARY KEY
-- `expires`: INT UNSIGNED NOT NULL
-- `data`: MEDIUMTEXT COLLATE utf8mb4_bin
+- `expires`: BIGINT UNSIGNED NOT NULL (Unix milliseconds)
+- `data`: LONGTEXT NOT NULL (JSON session server-side)
+
+### 2.12 Bảng `email_outbox` (gửi email bền vững)
+- `notification_id`: INT UNSIGNED UNIQUE, FK đến `notifications.id`; một hàng outbox cho một notification.
+- `status`: `pending`, `sending`, `sent`, `failed` hoặc `skipped`.
+- `attempts`, `next_attempt_at`, `locked_until`, `lease_token`, `sent_at`, `last_error_code` và timestamps để claim/retry.
+- Worker chỉ chạy khi có SMTP hợp lệ; `sent` thể hiện SMTP chấp nhận recipient, chưa chứng minh đã đến inbox. Nếu worker chết giữa SMTP accepted và ghi `sent`, retry có thể gửi lặp.

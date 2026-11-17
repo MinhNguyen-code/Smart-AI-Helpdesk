@@ -8,6 +8,11 @@ const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    setupFiles: ['./tests/frontend/setup.js'],
+    include: ['src/**/*.test.jsx'],
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

@@ -19,7 +19,7 @@ Trước khi tiến hành viết code, toàn bộ workspace bao gồm `Codex.md`
 | 1 | **Thư mục gốc & đường dẫn** | `Codex.md` gợi ý tên thư mục `smart-it-helpdesk/` | `AGENTS.md` bắt buộc: Thư mục gốc là `D:\Smart IT Helpdesk`. Tuyệt đối không tạo thư mục lồng `smart-it-helpdesk`. | **Tuân thủ AGENTS.md**: Toàn bộ mã nguồn, cấu hình, migrations và tài liệu đặt trực tiếp tại `D:\Smart IT Helpdesk`. |
 | 2 | **Vị trí ảnh Wireframe** | `Codex.md` ghi đường dẫn `docs/references/wireframes/` với tên `01-login.jpg` .. `07-rule-dialog.jpg` | Thư mục thực tế là `Wireframe/` với tên file gốc dạng băm/timestamp của chủ dự án (VD: `1791984801876_...jpg`). | **Giữ nguyên Wireframe/**: Không đổi tên, di chuyển hay xóa các file gốc. Tạo bảng ánh xạ 1-1 trong tài liệu đối soát. |
 | 3 | **Mô hình tổ chức** | `Smart_IT_Helpdesk_SaaS_PROPOSED.puml` đề xuất bảng `organizations`, `organization_memberships`, `ownership_scope` | `Codex.md` Mục 2: "Single-organization application. Do not build Multi-Tenant SaaS. Do not implement billing or organization switching." | **Tuân thủ Codex.md**: Xây dựng kiến trúc Single-Organization tinh gọn, không tạo bảng tổ chức đa người thuê gây phức tạp không cần thiết. |
-| 4 | **Số lượng cấp độ ưu tiên** | `Smart_IT_Helpdesk_ERD.puml` có 4 cấp độ: `P1, P2, P3, P4`. Wireframe hiển thị P1, P2, P3, P4. | `Codex.md` Mục 10: Quy tắc phân loại gồm 2 cấp độ cốt lõi: `URGENT` (Khẩn cấp) và `NORMAL` (Bình thường). | **Thống nhất giải pháp**: Thiết kế hệ thống với 2 mức ưu tiên chính thức theo Codex (`URGENT` và `NORMAL`). Ở tầng hiển thị Kanban và giao diện, ánh xạ trực quan tương thích với nhãn Wireframe (P1: URGENT, P2/P3: NORMAL). |
+| 4 | **Số lượng cấp độ ưu tiên** | ERD và wireframe hiển thị `P1`, `P2`, `P3`, `P4`. | `Codex.md` ban đầu mô tả `URGENT`/`NORMAL`. | **Quyết định đã được chủ dự án xác nhận:** dùng `P1`–`P4` trong logic, API và giao diện; `URGENT`/`NORMAL` chỉ còn là giá trị legacy trong enum migration. |
 | 5 | **Phân quyền người dùng (Roles)** | `Smart_IT_Helpdesk_ERD.puml` có 4 vai trò: `end_user`, `it_helpdesk`, `it_manager`, `admin`. | `Codex.md` Mục 2 & 9: Đúng 3 vai trò: `ADMIN`, `IT_AGENT`, `END_USER`. | **Tuân thủ Codex.md**: 3 vai trò chuẩn: `ADMIN`, `IT_AGENT`, `END_USER`. |
 | 6 | **Cơ chế xác thực (Auth)** | Wireframe 01 và `Non-Functional.png` vẽ trường mật khẩu và Bcrypt. `Smart_IT_Helpdesk_ERD.puml` có cột `password_hash`. | `Codex.md` Mục 3 & 5: Sử dụng Google OpenID Connect / OAuth 2.0 PKCE. Không lưu trữ mật khẩu người dùng, không tạo cơ chế đăng nhập mật khẩu cục bộ. | **Tuân thủ Codex.md**: Triển khai xác thực Google Sign-In chuẩn OpenID Connect với session phía server. Giữ giao diện hai cột của Wireframe 01 nhưng thay luồng nhập mật khẩu bằng nút Google Sign-In chính thức và thông báo đăng nhập hỗ trợ tài khoản BTEC FPT. |
 | 7 | **Trạng thái vòng đời Ticket** | `Smart_IT_Helpdesk_ERD.puml` có 5 trạng thái: `open`, `in_progress`, `pending_user`, `resolved`, `closed`. | `Codex.md` Mục 11 & Wireframe 03 (Kanban): 3 trạng thái chuẩn: `OPEN` (Mới tạo), `IN_PROGRESS` (Đang xử lý), `RESOLVED` (Đã giải quyết). | **Tuân thủ Codex.md & Wireframe 03**: Triển khai 3 trạng thái tương ứng 3 cột Kanban: `OPEN`, `IN_PROGRESS`, `RESOLVED`. |
@@ -42,9 +42,6 @@ Trước khi tiến hành viết code, toàn bộ workspace bao gồm `Codex.md`
 ---
 
 ## 4. Tài Khoản Khởi Tạo và Phân Quyền
-Hệ thống cấu hình danh sách cho phép (Allowlist) với 3 tài khoản Google thực tế được đề xuất:
-1. `binmin109@gmail.com` -> Vai trò **ADMIN**
-2. `nguyenbinhminh.1009.vn@gmail.com` -> Vai trò **IT_AGENT**
-3. `nguyenbinhminh.2006.vn@gmail.com` -> Vai trò **END_USER**
+Hệ thống cấu hình danh sách cho phép (Allowlist) với ba tài khoản Google được chủ dự án phê duyệt, lần lượt mang vai trò **ADMIN**, **IT_AGENT** và **END_USER**. Địa chỉ cụ thể chỉ đọc từ cấu hình cục bộ; không dùng giá trị mặc định trong mã nguồn.
 
-Hệ thống bảo đảm tài khoản chỉ được kích hoạt sau khi xác thực thành công qua Google và có vai trò hợp lệ trong cơ sở dữ liệu.
+Chủ dự án phê duyệt tài khoản trong MySQL trước; phiên đăng nhập chỉ được tạo sau khi Google xác thực thành công và vai trò/trạng thái tài khoản được kiểm tra.

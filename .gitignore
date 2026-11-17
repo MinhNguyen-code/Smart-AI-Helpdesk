@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.oil-ui/
 .pnp
 .pnp.js
 
@@ -16,6 +17,7 @@ build/
 
 # Private file uploads
 server/private-uploads/*
+server/monitoring/*.jsonl
 !server/private-uploads/.gitkeep
 
 # Testing & Coverage

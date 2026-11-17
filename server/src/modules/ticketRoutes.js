@@ -1,12 +1,31 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
+import { mkdir, open, unlink } from 'node:fs/promises';
+import path from 'node:path';
+import multer from 'multer';
+import config from '../config/index.js';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 import { classifyPriority, calculateDeadlines, assertStatusTransition } from './ticketPolicy.js';
+import { createNotifications } from './notificationService.js';
 
 const router = Router();
 const handle = action => (req, res, next) => Promise.resolve(action(req, res)).catch(next);
 function fail(statusCode, message) { throw Object.assign(new Error(message), { statusCode }); }
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: config.upload.maxFileSizeBytes, files: 1 },
+  fileFilter(req, file, done) { done(null, ['image/png', 'image/jpeg', 'image/webp'].includes(file.mimetype)); } });
+const uploadOne = (req, res, next) => upload.single('file')(req, res, error => {
+  if (!error) return next();
+  if (error instanceof multer.MulterError) return next(Object.assign(new Error('Invalid or oversized image'), { statusCode: error.code === 'LIMIT_FILE_SIZE' ? 413 : 400 }));
+  next(error);
+});
+const uploadRoot = path.resolve(config.upload.dir);
+function detectedType(bytes) {
+  if (bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10]))) return 'image/png';
+  if (bytes.subarray(0, 3).equals(Buffer.from([255,216,255]))) return 'image/jpeg';
+  if (bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP') return 'image/webp';
+  return null;
+}
 function ticketQuery(database, user) {
   const query = database('tickets');
   return user.role === 'END_USER' ? query.where('reporter_id', user.id) : query;
@@ -19,8 +38,12 @@ async function currentUser(req, res, next) {
     next();
   } catch (error) { next(error); }
 }
-router.use(['/tickets', '/categories'], requireAuth, currentUser);
+router.use(['/tickets', '/categories', '/agents'], requireAuth, currentUser);
 router.get('/categories', handle(async (req, res) => res.json(await db('categories').where({ is_active: true }).select('id', 'name'))));
+router.get('/agents', handle(async (req, res) => {
+  if (!['ADMIN', 'IT_AGENT'].includes(req.user.role)) fail(403, 'Staff role required');
+  res.json(await db('users').where({ role: 'IT_AGENT', is_active: true }).select('id', 'full_name').orderBy('full_name'));
+}));
 router.get('/tickets', handle(async (req, res) => {
   const page = Number(req.query.page || 1);
   if (!Number.isSafeInteger(page) || page < 1) fail(400, 'Invalid page');
@@ -32,7 +55,9 @@ router.get('/tickets', handle(async (req, res) => {
   }
   const [{ count }] = await query.clone().count('* as count');
   const items = await query.orderBy('id', 'desc').limit(30).offset((page - 1) * 30);
-  res.json({ items, total: Number(count), page, pageSize: 30 });
+  const reporters = await db('users').whereIn('id', [...new Set(items.map(item => item.reporter_id))]).select('id', 'full_name');
+  const names = new Map(reporters.map(user => [user.id, user.full_name]));
+  res.json({ items: items.map(item => ({ ...item, reporter_name: names.get(item.reporter_id) })), total: Number(count), page, pageSize: 30 });
 }));
 router.post('/tickets', handle(async (req, res) => {
   const { title, description, impact, category_id: categoryId } = req.body;
@@ -52,7 +77,7 @@ router.post('/tickets', handle(async (req, res) => {
       priority: decision.priority, priority_reason: decision.reason, priority_evidence: JSON.stringify(decision.evidence), ...deadlines });
     await trx('ticket_history').insert({ ticket_id: id, actor_id: req.user.id, event_type: 'CREATED', new_value: 'OPEN' });
     const recipients = await trx('users').where({ is_active: true }).whereIn('role', ['ADMIN', 'IT_AGENT']);
-    if (recipients.length) await trx('notifications').insert(recipients.map(user => ({ recipient_id: user.id, ticket_id: id,
+    if (recipients.length) await createNotifications(trx, recipients.map(user => ({ recipient_id: user.id, ticket_id: id,
       notification_type: 'TICKET_CREATED', title: 'Yêu cầu hỗ trợ mới', message: title,
       deduplication_key: `created:${id}:${user.id}` })));
     await trx('audit_logs').insert({ actor_id: req.user.id, action: 'TICKET_CREATED', entity_type: 'ticket', entity_id: String(id) });
@@ -63,16 +88,56 @@ router.post('/tickets', handle(async (req, res) => {
 router.get('/tickets/:id', handle(async (req, res) => {
   const ticket = await ticketQuery(db, req.user).where('id', req.params.id).first();
   if (!ticket) fail(404, 'Ticket not found');
-  const comments = db('ticket_comments').where('ticket_id', ticket.id);
-  if (req.user.role === 'END_USER') comments.where('visibility', 'public');
-  res.json({ ...ticket, comments: await comments.orderBy('id'), history: await db('ticket_history').where('ticket_id', ticket.id).orderBy('id') });
+  const comments = db('ticket_comments as comment').leftJoin('users as author', 'author.id', 'comment.author_id')
+    .where('comment.ticket_id', ticket.id).select('comment.*', 'author.full_name as author_name');
+  if (req.user.role === 'END_USER') comments.where('comment.visibility', 'public');
+  const reporter = await db('users').where('id', ticket.reporter_id).select('full_name').first();
+  const assignee = ticket.assignee_id && await db('users').where('id', ticket.assignee_id).select('full_name').first();
+  res.json({ ...ticket, reporter_name: reporter?.full_name, assignee_name: assignee?.full_name,
+    comments: await comments.orderBy('comment.id'), history: await db('ticket_history').where('ticket_id', ticket.id).orderBy('id'),
+    attachments: await db('ticket_attachments').where('ticket_id', ticket.id).select('id', 'original_filename', 'mime_type', 'size_bytes', 'created_at').orderBy('id') });
+}));
+router.post('/tickets/:id/attachments', uploadOne, handle(async (req, res) => {
+  if (!req.file || !req.file.buffer.length || detectedType(req.file.buffer) !== req.file.mimetype) fail(400, 'Invalid image');
+  const ticket = await ticketQuery(db, req.user).where('id', req.params.id).first();
+  if (!ticket) fail(404, 'Ticket not found');
+  const safeName = path.basename(req.file.originalname).replace(/[\x00-\x1f\x7f]/g, '').slice(0, 255) || 'image';
+  const storedName = randomUUID();
+  const target = path.join(uploadRoot, storedName);
+  await mkdir(uploadRoot, { recursive: true });
+  const file = await open(target, 'wx', 0o600);
+  try {
+    await file.writeFile(req.file.buffer);
+    const attachment = await db.transaction(async trx => {
+      const [id] = await trx('ticket_attachments').insert({ ticket_id: ticket.id, uploaded_by: req.user.id,
+        original_filename: safeName, stored_filename: storedName, mime_type: req.file.mimetype, size_bytes: req.file.size });
+      await trx('ticket_history').insert({ ticket_id: ticket.id, actor_id: req.user.id, event_type: 'ATTACHMENT_ADDED', new_value: String(id) });
+      return trx('ticket_attachments').where({ id }).select('id', 'original_filename', 'mime_type', 'size_bytes', 'created_at').first();
+    });
+    res.status(201).json(attachment);
+  } catch (error) { await unlink(target).catch(() => {}); throw error; }
+  finally { await file.close(); }
+}));
+router.get('/tickets/:id/attachments/:attachmentId', handle(async (req, res) => {
+  const ticket = await ticketQuery(db, req.user).where('id', req.params.id).first();
+  if (!ticket) fail(404, 'Ticket not found');
+  const attachment = await db('ticket_attachments').where({ id: req.params.attachmentId, ticket_id: ticket.id }).first();
+  if (!attachment) fail(404, 'Attachment not found');
+  const file = await open(path.join(uploadRoot, attachment.stored_filename), 'r');
+  let contents;
+  try { contents = await file.readFile(); } finally { await file.close(); }
+  res.set('Content-Type', attachment.mime_type);
+  res.set('Content-Disposition', `attachment; filename="attachment"; filename*=UTF-8''${encodeURIComponent(attachment.original_filename)}`);
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.send(contents);
 }));
 router.get('/tickets/:id/comments', handle(async (req, res) => {
   const ticket = await ticketQuery(db, req.user).where('id', req.params.id).first();
   if (!ticket) fail(404, 'Ticket not found');
-  const query = db('ticket_comments').where('ticket_id', ticket.id);
-  if (req.user.role === 'END_USER') query.where('visibility', 'public');
-  res.json(await query.orderBy('id'));
+  const query = db('ticket_comments as comment').leftJoin('users as author', 'author.id', 'comment.author_id')
+    .where('comment.ticket_id', ticket.id).select('comment.*', 'author.full_name as author_name');
+  if (req.user.role === 'END_USER') query.where('comment.visibility', 'public');
+  res.json(await query.orderBy('comment.id'));
 }));
 router.post('/tickets/:id/comments', handle(async (req, res) => {
   const { message, visibility = 'public' } = req.body;
@@ -90,7 +155,7 @@ router.post('/tickets/:id/comments', handle(async (req, res) => {
     const recipients = visibility === 'internal'
       ? [ticket.assignee_id].filter(id => id && id !== req.user.id)
       : [ticket.reporter_id, ticket.assignee_id].filter(id => id && id !== req.user.id);
-    if (recipients.length) await trx('notifications').insert([...new Set(recipients)].map(id => ({
+    if (recipients.length) await createNotifications(trx, [...new Set(recipients)].map(id => ({
       recipient_id: id, ticket_id: ticket.id, notification_type: 'TICKET_REPLY', title: 'Phản hồi mới', message: `Ticket ${ticket.ticket_code} có phản hồi mới`,
       deduplication_key: `reply:${ticket.id}:${id}:${randomUUID()}`,
     })));
@@ -111,7 +176,26 @@ router.patch('/tickets/:id/assign', handle(async (req, res) => {
     if (previous.version !== version) fail(409, 'Ticket changed; refresh before retry');
     await trx('tickets').where('id', previous.id).update({ assignee_id: assigneeId, version: version + 1, updated_at: new Date() });
     await trx('ticket_history').insert({ ticket_id: previous.id, actor_id: req.user.id, event_type: 'ASSIGNED', old_value: previous.assignee_id && String(previous.assignee_id), new_value: String(assigneeId) });
-    await trx('notifications').insert({ recipient_id: assigneeId, ticket_id: previous.id, notification_type: 'ASSIGNED', title: 'Ticket được phân công', message: `Ticket ${previous.ticket_code}`, deduplication_key: `assign:${previous.id}:${version}` });
+    await createNotifications(trx, [{ recipient_id: assigneeId, ticket_id: previous.id, notification_type: 'ASSIGNED', title: 'Ticket được phân công', message: `Ticket ${previous.ticket_code}`, deduplication_key: `assign:${previous.id}:${version}` }]);
+    return trx('tickets').where('id', previous.id).first();
+  });
+  res.json(ticket);
+}));
+router.post('/tickets/:id/acknowledge', handle(async (req, res) => {
+  if (!['ADMIN', 'IT_AGENT'].includes(req.user.role)) fail(403, 'Staff role required');
+  if (!Number.isSafeInteger(req.body?.version)) fail(400, 'Version required');
+  const ticket = await db.transaction(async trx => {
+    const previous = await trx('tickets').where('id', req.params.id).forUpdate().first();
+    if (!previous) fail(404, 'Ticket not found');
+    if (previous.version !== req.body.version) fail(409, 'Ticket changed; refresh before retry');
+    if (previous.acknowledged_at || previous.status === 'RESOLVED') fail(409, 'Ticket cannot be acknowledged');
+    const now = new Date();
+    await trx('tickets').where('id', previous.id).update({ acknowledged_at: now,
+      version: previous.version + 1, updated_at: now });
+    await trx('ticket_history').insert({ ticket_id: previous.id, actor_id: req.user.id,
+      event_type: 'ACKNOWLEDGED', new_value: now.toISOString() });
+    await trx('audit_logs').insert({ actor_id: req.user.id, action: 'TICKET_ACKNOWLEDGED',
+      entity_type: 'ticket', entity_id: String(previous.id) });
     return trx('tickets').where('id', previous.id).first();
   });
   res.json(ticket);

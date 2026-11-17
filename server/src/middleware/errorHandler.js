@@ -6,17 +6,12 @@ export function errorHandler(err, req, res, next) {
   const statusCode = err.statusCode || err.status || 500;
   const isServerFault = statusCode >= 500;
 
-  // Structured logging for debugging
-  console.error(`[ERROR] ${new Date().toISOString()} ${req.method} ${req.originalUrl}:`, {
-    message: err.message,
-    statusCode,
-    code: err.code,
-    stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined,
-  });
+  if (isServerFault) console.error(JSON.stringify({ event: 'http_error', at: new Date().toISOString(),
+    method: req.method, route: req.route?.path || 'unmatched', statusCode, code: err.code || 'INTERNAL_ERROR' }));
 
   const response = {
     error: {
-      message: isServerFault && process.env.NODE_ENV === 'production'
+      message: isServerFault
         ? 'Internal server error. Please try again later.'
         : err.message || 'An unexpected error occurred.',
       code: err.code || (isServerFault ? 'INTERNAL_ERROR' : 'BAD_REQUEST'),
@@ -34,7 +29,7 @@ export function errorHandler(err, req, res, next) {
 export function notFoundHandler(req, res) {
   res.status(404).json({
     error: {
-      message: `Endpoint '${req.method} ${req.originalUrl}' not found.`,
+      message: `Endpoint '${req.method} ${req.path}' not found.`,
       code: 'ROUTE_NOT_FOUND',
       statusCode: 404,
     },

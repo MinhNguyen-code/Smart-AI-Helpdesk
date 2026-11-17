@@ -43,7 +43,9 @@ router.get('/google/callback', async (req, res) => {
     const user = await db.transaction(async trx => {
       const approved = await trx('users').where({ email: claims.email.toLowerCase().trim(), is_active: true }).forUpdate().first();
       if (!approved || (approved.google_sub && approved.google_sub !== claims.sub)) throw new Error('Account not approved');
-      await trx('users').where('id', approved.id).update({ google_sub: claims.sub });
+      const fullName = typeof claims.name === 'string' ? claims.name.trim().slice(0, 255) : '';
+      await trx('users').where('id', approved.id).update({ google_sub: claims.sub,
+        ...(fullName ? { full_name: fullName } : {}) });
       return approved;
     });
     await promisify(req.session.regenerate.bind(req.session))();

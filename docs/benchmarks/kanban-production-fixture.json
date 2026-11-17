@@ -1,0 +1,52 @@
+{
+  "generatedAt": "2026-11-16T21:39:50.958Z",
+  "nodeVersion": "v24.20.0",
+  "browserVersion": "157.0.4341.60",
+  "platform": "win32",
+  "logicalCpus": 12,
+  "memoryGiB": 16,
+  "kind": "production Vite bundle + Edge; isolated Playwright API fixture; no MySQL or Google session",
+  "method": "Each client warms once, then 40 or more page navigations per scenario; time to 30 rendered cards; nearest-rank percentiles",
+  "targetP95Ms": 2000,
+  "scenarios": [
+    {
+      "totalTickets": 30,
+      "clients": 1,
+      "renderedCards": 30,
+      "attemptedNavigations": 40,
+      "sampleCount": 40,
+      "p50Ms": 152,
+      "p95Ms": 168,
+      "p99Ms": 173,
+      "navigationFailures": 0,
+      "diagnosticErrors": 0,
+      "errorRatePercent": 0
+    },
+    {
+      "totalTickets": 300,
+      "clients": 4,
+      "renderedCards": 30,
+      "attemptedNavigations": 40,
+      "sampleCount": 40,
+      "p50Ms": 391,
+      "p95Ms": 468,
+      "p99Ms": 476,
+      "navigationFailures": 0,
+      "diagnosticErrors": 0,
+      "errorRatePercent": 0
+    },
+    {
+      "totalTickets": 3000,
+      "clients": 8,
+      "renderedCards": 30,
+      "attemptedNavigations": 40,
+      "sampleCount": 40,
+      "p50Ms": 710,
+      "p95Ms": 806,
+      "p99Ms": 812,
+      "navigationFailures": 0,
+      "diagnosticErrors": 0,
+      "errorRatePercent": 0
+    }
+  ]
+}

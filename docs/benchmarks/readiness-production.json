@@ -1,0 +1,47 @@
+{
+  "generatedAt": "2026-11-16T21:08:05.034Z",
+  "nodeVersion": "v24.20.0",
+  "platform": "win32",
+  "logicalCpus": 12,
+  "memoryGiB": 16,
+  "kind": "read-only production-mode Express /ready + real MySQL; no ticket API workload",
+  "method": "One warmup per client; 40 requests per concurrency; nearest-rank percentiles",
+  "scenarios": [
+    {
+      "clients": 1,
+      "sampleCount": 40,
+      "p50Ms": 3.6,
+      "p95Ms": 5.7,
+      "p99Ms": 5.8,
+      "errorCount": 0,
+      "errorRatePercent": 0,
+      "statuses": [
+        200
+      ]
+    },
+    {
+      "clients": 4,
+      "sampleCount": 40,
+      "p50Ms": 4.7,
+      "p95Ms": 6.1,
+      "p99Ms": 6.5,
+      "errorCount": 0,
+      "errorRatePercent": 0,
+      "statuses": [
+        200
+      ]
+    },
+    {
+      "clients": 8,
+      "sampleCount": 40,
+      "p50Ms": 8.4,
+      "p95Ms": 11.8,
+      "p99Ms": 12.7,
+      "errorCount": 0,
+      "errorRatePercent": 0,
+      "statuses": [
+        200
+      ]
+    }
+  ]
+}

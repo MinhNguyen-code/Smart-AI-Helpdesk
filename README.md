@@ -10,7 +10,7 @@ Smart IT Helpdesk là hệ thống quản lý yêu cầu hỗ trợ sự cố t�
 
 - **Frontend**: React 18, Vite, Tailwind CSS, React Router DOM, Lucide React, Recharts.
 - **Backend**: Node.js, Express, Knex.js, mysql2.
-- **Database**: MySQL 8.x (`smart_it_helpdesk_dev`, `smart_it_helpdesk_test`).
+- **Database**: MySQL 8.x (`smart_it_helpdesk_new_dev`, `smart_it_helpdesk_new_test`); hai schema không có `new` là dữ liệu lịch sử ngoài phạm vi dự án.
 - **Authentication**: Google OpenID Connect / OAuth 2.0 Authorization Code Flow với PKCE và session lưu trữ server-side.
 - **Testing**: Node.js Test Runner / Vitest, React Testing Library, Supertest.
 
@@ -69,7 +69,7 @@ D:\Smart IT Helpdesk
    ```
 2. Cấu hình file môi trường:
    - Copy `.env.example` thành `.env`
-   - Cập nhật thông tin kết nối MySQL (`DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`)
+   - Cập nhật thông tin kết nối MySQL (`DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`) và xác minh `DB_NAME=smart_it_helpdesk_new_dev`, `DB_TEST_NAME=smart_it_helpdesk_new_test`.
    - Thêm Google OAuth Client ID & Secret nếu chạy live Google Sign-In
 3. Chạy migrations khởi tạo cơ sở dữ liệu (sau khi xác minh database đích):
    ```powershell
@@ -85,24 +85,31 @@ D:\Smart IT Helpdesk
      - Backend: `npm run dev:server` (Cổng 5000)
      - Frontend: `npm run dev:client` (Cổng 5173)
      - SLA Worker: `npm run worker:sla`
+     - Windows supervisor: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File server/scripts/superviseWorkers.ps1`; thêm `-IncludeEmail` chỉ sau khi SMTP hợp lệ.
+     - Availability monitor: `npm.cmd run monitor:availability` (mặc định ghi JSONL theo giờ Asia/Bangkok).
+     - Tổng hợp kỳ quan sát: `npm.cmd run report:availability`; báo `NOT_VERIFIED` nếu chưa đủ 10 ngày làm việc/95% độ phủ mẫu.
 5. Chạy kiểm thử:
    ```powershell
-   npm test
+   npm.cmd test
+   npm.cmd run test:integration
+   npm.cmd run test:frontend
+   npm.cmd run test:browser
+   npm.cmd run test:browser:api
+   npm.cmd run test:browser:production
    ```
 
 ---
 
-## 4. Tài khoản Đề xuất & Vai trò (Role Mapping)
+## Giao diện theo 7 wireframe
 
-| Gmail | Vai trò | Quyền hạn chính |
-|---|---|---|
-| `binmin109@gmail.com` | **ADMIN** | Quản trị quy tắc từ khóa, cấu hình SLA, toàn quyền quản trị ticket & người dùng, xem báo cáo thống kê |
-| `nguyenbinhminh.1009.vn@gmail.com` | **IT_AGENT** | Tiếp nhận ticket, cập nhật trạng thái, trao đổi giải quyết sự cố, nhận cảnh báo SLA |
-| `nguyenbinhminh.2006.vn@gmail.com` | **END_USER** | Tạo ticket báo lỗi, theo dõi tiến độ ticket cá nhân, trao đổi phản hồi |
+Chạy `npm run dev` rồi mở `http://localhost:5173/login`. Giao diện hiện có trang đăng nhập, tạo yêu cầu, Kanban, chi tiết ticket/SLA, báo cáo, danh sách quy tắc và hộp thoại thêm/sửa quy tắc. Minh họa 3D ở trang đăng nhập dùng Three.js; bảng, biểu mẫu và biểu đồ vẫn là thành phần HTML/React để có thể tương tác và dùng bàn phím.
 
----
+Trong Vite development, chọn **Xem giao diện mẫu** hoặc mở `http://localhost:5173/kanban?preview=1` để thử giao diện với dữ liệu trong bộ nhớ. Bản build production không có preview và yêu cầu session thật. Chế độ thật dùng Google OIDC, API ticket, quy tắc, SLA, thông báo và báo cáo SQL. Ảnh được lưu riêng tư sau khi tạo ticket; UI báo rõ nếu upload lỗi. `test:browser` kiểm tra giao diện mẫu; `test:browser:api` dùng session fixture chỉ trong schema test để kiểm tra React/API/MySQL, **không** xác nhận đăng nhập Google thật.
 
-## 5. Trạng thái Dự án
+## 4. Tài khoản và vai trò
 
-- **Day 1 — Foundation**: Đang triển khai & nghiệm thu (PASS/PARTIAL/BLOCKED chi tiết trong `docs/DAILY_PROGRESS.md`).
-- **Tài liệu tham chiếu**: Đã đối soát toàn diện `Diagrams/` và `Wireframe/`.
+Ba vai trò là `ADMIN`, `IT_AGENT`, `END_USER`. Chủ dự án cấu hình các địa chỉ được phép trong `.env` và xác minh ánh xạ trước khi dùng script onboarding. Trang quản trị `/users` cho phép Admin duyệt tài khoản mới và điều chỉnh vai trò/trạng thái; bản ghi mới chỉ liên kết Google sau callback OIDC hợp lệ.
+
+## 5. Trạng thái dự án
+
+API Ticket, Rules, ACK/SLA, notification, outbox, analytics và quản trị người dùng có test MySQL trên `smart_it_helpdesk_new_test`. Bảy wireframe có ảnh Playwright preview và các trang API/MySQL test. Checkpoint cuối vẫn **PARTIAL** cho đến khi nghiệm thu Google ba vai trò thật, SMTP ngoài ứng dụng và kỳ quan sát uptime 99%. Xem `docs/phase-reports/FINAL-ACCEPTANCE-2026-11-17.md`.

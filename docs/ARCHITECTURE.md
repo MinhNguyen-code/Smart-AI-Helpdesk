@@ -9,7 +9,7 @@ Smart IT Helpdesk được thiết kế theo mô hình kiến trúc Monorepo Sin
 |                                 CLIENT TIER                                       |
 |  React 18 (Vite) + Tailwind CSS + React Router + Lucide Icons + Recharts          |
 |  - AuthProvider & Session Interceptor                                             |
-|  - 7 screens matching exact wireframe visual layout                               |
+|  - 7 screens based on the original wireframes                                     |
 +------------------------------------------+----------------------------------------+
                                            | HTTP / REST API (with Credentials/Cookies)
 +------------------------------------------v----------------------------------------+
@@ -24,7 +24,7 @@ Smart IT Helpdesk được thiết kế theo mô hình kiến trúc Monorepo Sin
 |  | - Ticket Lifecycle Module (OPEN -> IN_PROGRESS -> RESOLVED)                 |  |
 |  | - Rule-Based Priority Engine (Vietnamese NFD Normalizer, Urgent Precedence) |  |
 |  | - SLA Service (Target calculation, Breach detection, Deduplication)         |  |
-|  | - Notification Service (In-App real-time alerts & persistent inbox)         |  |
+|  | - Notification Service (persistent inbox, client polling)                  |  |
 |  | - Analytics Aggregation Service (Raw SQL aggregation, No client-side calc)  |  |
 |  +-----------------------------------------------------------------------------+  |
 |  | Data Access Layer: Knex.js Query Builder with MySQL 8.x Transactions         |  |
@@ -33,8 +33,8 @@ Smart IT Helpdesk được thiết kế theo mô hình kiến trúc Monorepo Sin
 +------------------------------------------v----------------------------------------+
 |                                DATA PERSISTENCE TIER                              |
 |  MySQL 8.x Community Server                                                       |
-|  - Development Database: `smart_it_helpdesk_dev`                                  |
-|  - Test Database: `smart_it_helpdesk_test`                                        |
+|  - Development Database: `smart_it_helpdesk_new_dev`                              |
+|  - Test Database: `smart_it_helpdesk_new_test`                                    |
 |  - Persistent Session Table: `sessions`                                           |
 |  - Core Entities: users, categories, tickets, comments, attachments,              |
 |                   ticket_history, priority_rules, sla_policies, notifications     |
@@ -47,18 +47,16 @@ Smart IT Helpdesk được thiết kế theo mô hình kiến trúc Monorepo Sin
 
 ### 2.1 Cấu trúc Module hướng tính năng (Feature-Oriented Architecture)
 - `src/api/`: Khởi tạo API Client dùng Native Fetch API cấu hình kèm `credentials: 'include'` để tự động gửi Session Cookie.
-- `src/components/layout/`: Sidebar thu nhỏ thanh lịch, Topbar, UserProfile badge.
-- `src/components/ui/`: Các thành phần nguyên tử dùng chung (Button, Input, Select, Textarea, Badge, Modal, Alert, Table, LoadingSpinner).
-- `src/features/auth/`: Màn hình Đăng nhập (SCR-01), trạng thái phiên người dùng, AuthProvider context.
-- `src/features/tickets/`: Biểu mẫu tạo ticket (SCR-02), modal chi tiết ticket & trao đổi phản hồi (SCR-04).
-- `src/features/kanban/`: Bảng Kanban 3 cột (Mới tạo, Đang xử lý, Đã giải quyết) (SCR-03), bộ lọc sắp xếp và tìm kiếm.
-- `src/features/rules/`: Bảng danh sách quy tắc từ khóa (SCR-06) và modal thêm/sửa quy tắc (SCR-07).
-- `src/features/dashboard/`: Thẻ chỉ số MTTA/MTTR, biểu đồ số lượng ticket theo ngày, biểu đồ phân bổ mức độ ưu tiên (SCR-05).
-- `src/features/notifications/`: Hộp thư thông báo trong ứng dụng, đếm số thông báo chưa đọc, đánh dấu đã đọc.
+- `src/App.jsx`: Điều hướng, phiên đăng nhập, Login, tạo ticket, Kanban và chế độ preview.
+- `src/features/TicketDetail.jsx`: Chi tiết ticket, hội thoại, trạng thái và tệp đính kèm.
+- `src/features/RulesPage.jsx`: Danh sách/dialog quy tắc và cấu hình SLA P1–P4.
+- `src/features/RealDashboard.jsx`: KPI và biểu đồ SQL cho Admin.
+- `src/features/NotificationMenu.jsx`: Hộp thông báo, lấy dữ liệu định kỳ 30 giây.
+- `src/features/UsersPage.jsx`: Allowlist và vai trò cho Admin.
 
 ### 2.2 Quản lý Phiên & Bảo mật Client
-- Xác thực dựa trên Cookie `HttpOnly` lưu session ID an toàn, ngăn chặn hoàn toàn rủi ro XSS rò rỉ token.
-- Phân quyền điều hướng: Sử dụng `<ProtectedRoute allowedRoles={['ADMIN', 'IT_AGENT']}>` để kiểm soát giao diện, tuy nhiên toàn bộ bảo mật thực tế được cưỡng chế 100% tại Backend API.
+- Xác thực dựa trên Cookie `HttpOnly` lưu session ID; vẫn phải phòng chống XSS ở nội dung giao diện.
+- Phân quyền điều hướng: `src/App.jsx` ẩn trang Admin với vai trò khác và chuyển người chưa đăng nhập về Login; API luôn kiểm tra lại vai trò/trạng thái hoạt động từ MySQL.
 
 ---
 
@@ -67,8 +65,8 @@ Smart IT Helpdesk được thiết kế theo mô hình kiến trúc Monorepo Sin
 ### 3.1 Chuỗi Middleware (Pipeline)
 1. **Helmet**: Thiết lập bảo mật HTTP headers tiêu chuẩn (Content Security Policy, Referrer Policy, v.v.).
 2. **CORS**: Chỉ cho phép nguồn tin cậy từ `CLIENT_URL` (mặc định `http://localhost:5173`) với `credentials: true`.
-3. **Express Rate Limit**: Giới hạn tần suất gọi API (100 requests/15 phút cho general API; 10 requests/15 phút cho Auth endpoints) chống brute-force và DDoS.
-4. **Session Middleware**: Quản lý phiên làm việc bằng `express-session` kết hợp `express-mysql-session` để lưu trữ trạng thái phiên bền vững trong MySQL.
+3. **Express Rate Limit**: Giới hạn API ở 200 requests/15 phút theo cấu hình hiện tại; chưa có limiter riêng cho Auth.
+4. **Session Middleware**: `express-session` kết hợp `server/src/db/sessionStore.js` lưu trạng thái phiên bền vững trong MySQL.
 5. **Request Sanitization & Validation**: Kiểm tra tính hợp lệ của tham số đầu vào (sử dụng schemas định nghĩa chặt chẽ) trước khi chuyển vào controller.
 
 ### 3.2 Động Cơ Phân Loại Ưu Tiên Tự Động (Rule-Based Priority Engine)
@@ -79,20 +77,24 @@ Tuân thủ nghiêm ngặt yêu cầu đề tài học thuật về độ tin c�
   2. Khử dấu tiếng Việt hoặc khớp song song cả từ có dấu và không dấu (VD: "server sập" <=> "server sap").
   3. Tách từ khóa và khớp theo cụm từ (phrase matching) hoặc ranh giới từ để loại trừ các từ lồng sai ngữ cảnh.
 - **Quy tắc quyết định**:
-  - Nếu `impact == 'organization'` (Toàn tổ chức) -> Tự động gắn `URGENT`.
-  - Nếu tiêu đề hoặc mô tả chứa bất kỳ từ khóa quy tắc nào đang `Active` có mức ưu tiên `URGENT` -> Gán `URGENT`.
-  - Ngược lại -> Gán `NORMAL`.
-  - Mức `URGENT` luôn có độ ưu tiên cao nhất trong quá trình so khớp.
+  - Nếu `impact == 'organization'` (Toàn tổ chức) -> Tự động gắn `P1`.
+  - Nếu tiêu đề hoặc mô tả khớp quy tắc đang `Active`, chọn mức cao nhất trong `P1`–`P4`.
+  - Không khớp quy tắc và không ảnh hưởng toàn tổ chức -> `P3`.
+  - `P1` là mức cao nhất; quyết định lưu bằng chứng khớp từ khóa cùng ticket.
 - **Lưu vết bằng chứng**: Mọi quyết định phân loại đều được ghi nhận lý do cụ thể vào cột `priority_reason` của ticket.
 
 ### 3.3 Cơ Chế Giám Sát SLA (SLA Monitoring & Worker)
-- Khi ticket được tạo, hệ thống nạp chính sách SLA tương ứng với mức ưu tiên (`URGENT` hoặc `NORMAL`).
+- Khi ticket được tạo, hệ thống nạp chính sách SLA tương ứng với mức ưu tiên `P1`–`P4`.
 - Tự động tính toán và lưu `response_deadline_at` (hạn phản hồi) và `resolution_deadline_at` (hạn giải quyết).
 - **Background Worker (`worker:sla`)**:
   - Chạy theo chu kỳ định cấu hình (mặc định 60 giây).
-  - Quét các ticket chưa giải quyết có hạn xử lý đã vượt quá thời gian hiện tại (`NOW() > resolution_deadline_at`).
-  - Tạo bản ghi thông báo lỗi vi phạm SLA (`sla_breach`) trong bảng `notifications` cho đội ngũ kỹ thuật và Admin.
-  - Sử dụng cơ chế khóa trùng lặp (`deduplication_key = 'sla_breach_{ticket_id}_{type}'`) để đảm bảo tính lũy nghiệm (idempotency), không gửi cảnh báo lặp lại cho cùng một sự kiện vi phạm.
+  - Quét hạn phản hồi và giải quyết; nếu đã hoàn thành sau hạn, vẫn ghi nhận vi phạm.
+  - Tạo thông báo `SLA_BREACH` trong bảng `notifications` cho IT Agent và Admin đang hoạt động.
+  - Khóa hàng ticket và dùng `deduplication_key = 'sla:{ticketId}:{response|resolution}:{recipientId}'` để ngăn trùng cảnh báo.
+  - Trên Windows, `server/scripts/superviseWorkers.ps1` theo dõi PID, tự khởi động lại worker lỗi và ngăn hai supervisor qua mutex. Ba lần quét lỗi liên tiếp khiến worker thoát để supervisor hồi phục.
+- **Email outbox (`worker:email`)**: Notification và hàng `email_outbox` được thêm trong cùng MySQL transaction. Worker claim bằng row lock/lease và retry có backoff; chỉ khởi chạy khi SMTP được chủ dự án cấu hình. Test không gửi email thật.
+- **ACK/Analytics**: ACK lưu riêng tại `tickets.acknowledged_at`; MTTA dùng ACK, first-response dùng phản hồi public, MTTR dùng RESOLVED. Deadline và `priority_evidence` được chụp tại lúc tạo ticket.
+- **Thời gian**: Mỗi kết nối Knex đặt MySQL session UTC để `CURRENT_TIMESTAMP` và `mysql2` nhất quán.
 
 ---
 

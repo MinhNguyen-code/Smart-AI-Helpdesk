@@ -75,10 +75,13 @@ export function createDatabaseConfig(environment, purpose = 'runtime') {
       afterCreate(client, done) {
         try { assertTarget(environment, purpose, connection); }
         catch (failure) { return done(failure, client); }
-        client.query('SELECT DATABASE() AS selected_database, CURRENT_USER() AS matched_account', (error, rows) => {
+        client.query("SET time_zone = '+00:00'", error => {
           if (error) return done(error, client);
-          try { assertIdentity(environment, purpose, rows[0]); done(null, client); }
-          catch (failure) { done(failure, client); }
+          client.query('SELECT DATABASE() AS selected_database, CURRENT_USER() AS matched_account', (identityError, rows) => {
+            if (identityError) return done(identityError, client);
+            try { assertIdentity(environment, purpose, rows[0]); done(null, client); }
+            catch (failure) { done(failure, client); }
+          });
         });
       },
     },

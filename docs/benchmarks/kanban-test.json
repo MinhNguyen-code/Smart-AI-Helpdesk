@@ -1,0 +1,8 @@
+{
+  "scenario": "Vite dev + Express + isolated MySQL test, 30 cards, signed test fixture session",
+  "sampleCount": 20,
+  "p50Ms": 224,
+  "p95Ms": 391,
+  "p99Ms": 397,
+  "targetMs": 2000
+}

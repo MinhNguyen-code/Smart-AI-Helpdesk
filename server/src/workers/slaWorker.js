@@ -1,4 +1,5 @@
 import { db } from '../db/index.js';
+import { createNotifications } from '../modules/notificationService.js';
 
 export async function runSlaCheck(database = db, afterId = 0, now = new Date()) {
   const tickets = await database('tickets').where('id', '>', afterId).orderBy('id').limit(100).select('id');
@@ -19,10 +20,10 @@ export async function runSlaCheck(database = db, afterId = 0, now = new Date()) 
         for (const recipient of staff) {
           const key = `sla:${ticket.id}:${kind}:${recipient.id}`;
           if (await trx('notifications').where('deduplication_key', key).first()) continue;
-          await trx('notifications').insert({ recipient_id: recipient.id, ticket_id: ticket.id,
+          await createNotifications(trx, [{ recipient_id: recipient.id, ticket_id: ticket.id,
             notification_type: 'SLA_BREACH', title: 'Ticket quá hạn SLA',
             message: `Ticket ${ticket.ticket_code}: ${kind === 'response' ? 'quá hạn phản hồi' : 'quá hạn xử lý'}`,
-            deduplication_key: key });
+            deduplication_key: key }]);
           count++;
         }
       }
@@ -36,16 +37,23 @@ if (process.argv[1]?.endsWith('slaWorker.js')) {
   let stopped = false;
   let cursor = 0;
   let timer;
+  let consecutiveErrors = 0;
   const shutdown = async () => { stopped = true; clearTimeout(timer); await db.destroy(); };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
   async function tick() {
     try {
       const result = await runSlaCheck(db, cursor);
+      consecutiveErrors = 0;
       cursor = result.cursor;
       console.log(JSON.stringify({ event: 'sla_check', ...result }));
     } catch (error) {
+      consecutiveErrors++;
       console.error(JSON.stringify({ event: 'sla_check_failed', code: error.code || 'WORKER_FAILURE' }));
+      if (consecutiveErrors >= 3) {
+        await shutdown();
+        process.exitCode = 1;
+      }
     } finally {
       if (!stopped) timer = setTimeout(tick, cursor ? 1000 : 60000);
     }

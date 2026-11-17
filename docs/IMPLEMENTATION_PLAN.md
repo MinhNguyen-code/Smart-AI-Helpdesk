@@ -17,7 +17,7 @@ Kế hoạch thực hiện dự án được chia thành 7 giai đoạn (Day 1 �
 - **Mục tiêu**: Tích hợp Google OAuth 2.0 PKCE, đối soát danh sách cho phép 3 tài khoản Gmail đề xuất, lưu trữ phiên đăng nhập bằng MySQL session store, AuthProvider, bảo vệ định tuyến client-side, màn hình Đăng nhập (SCR-01) bám sát Wireframe 01.
 - **Tiêu chí nghiệm thu**:
   - Luồng Google Sign-In chuẩn OpenID Connect.
-  - Gán đúng vai trò: `binmin109@gmail.com` (ADMIN), `nguyenbinhminh.1009.vn@gmail.com` (IT_AGENT), `nguyenbinhminh.2006.vn@gmail.com` (END_USER).
+  - Gán đúng ba vai trò ADMIN, IT_AGENT, END_USER theo ánh xạ chủ dự án phê duyệt; địa chỉ cụ thể lấy từ biến môi trường cục bộ.
   - Từ chối các tài khoản Google ngoài danh sách phê duyệt.
 
 ## Giai Đoạn 3: DAY 3 — TICKET CORE
@@ -27,9 +27,9 @@ Kế hoạch thực hiện dự án được chia thành 7 giai đoạn (Day 1 �
   - Phân quyền chặt chẽ: End-User chỉ xem ticket cá nhân; IT Agent và Admin xem toàn bộ hàng đợi.
 
 ## Giai Đoạn 4: DAY 4 — PRIORITY ENGINE & SLA
-- **Mục tiêu**: Xây dựng thuật toán Rule-Based Priority Engine chuẩn hóa tiếng Việt NFD, tự động gán `URGENT` cho tác động diện rộng hoặc khớp từ khóa khẩn cấp, tính toán hạn xử lý cam kết SLA, Background Worker quét vi phạm SLA định kỳ, màn hình SCR-06 và SCR-07.
+- **Mục tiêu**: Xây dựng thuật toán Rule-Based Priority Engine chuẩn hóa tiếng Việt NFD, tự động gán `P1` cho tác động toàn tổ chức hoặc chọn ưu tiên cao nhất trong quy tắc `P1`–`P4`, tính toán hạn SLA, Background Worker quét vi phạm, màn hình SCR-06 và SCR-07.
 - **Tiêu chí nghiệm thu**:
-  - Từ khóa "server sập" tự động kích hoạt mức `URGENT`.
+  - Từ khóa "server sập" tự động kích hoạt mức `P1`.
   - Hạn phản hồi và hạn giải quyết được tính chính xác từ bảng `sla_policies`.
   - Worker quét vi phạm tự động tạo thông báo không trùng lặp (Idempotent).
 

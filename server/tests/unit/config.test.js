@@ -15,7 +15,7 @@ test('Configuration unit tests', async (t) => {
     assert.strictEqual(config.db.port, 3306);
   });
 
-  await t.test('configures 3 initial approved Gmail accounts with correct roles', () => {
+  await t.test('initial account mapping comes from local environment and preserves roles', () => {
     assert.strictEqual(config.initialAccounts.length, 3);
 
     const admin = config.initialAccounts.find((a) => a.role === 'ADMIN');
@@ -23,13 +23,13 @@ test('Configuration unit tests', async (t) => {
     const user = config.initialAccounts.find((a) => a.role === 'END_USER');
 
     assert.ok(admin, 'Admin account should be configured');
-    assert.strictEqual(admin.email, 'binmin109@gmail.com');
+    assert.strictEqual(admin.email, process.env.INITIAL_ADMIN_EMAIL || '');
 
     assert.ok(agent, 'IT Agent account should be configured');
-    assert.strictEqual(agent.email, 'nguyenbinhminh.1009.vn@gmail.com');
+    assert.strictEqual(agent.email, process.env.INITIAL_IT_AGENT_EMAIL || '');
 
     assert.ok(user, 'End User account should be configured');
-    assert.strictEqual(user.email, 'nguyenbinhminh.2006.vn@gmail.com');
+    assert.strictEqual(user.email, process.env.INITIAL_END_USER_EMAIL || '');
   });
 
   await t.test('configures secure session settings', () => {
