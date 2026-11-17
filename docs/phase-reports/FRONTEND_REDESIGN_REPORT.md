@@ -10,7 +10,7 @@
 - `src/App.jsx`: tải Rules và User Management khi mở tuyến ADMIN tương ứng; có trạng thái tải truy cập được. Bundle chính giảm từ 455.03 xuống 426.22 KB minified (130.63 xuống 126.37 KB gzip); hai trang riêng lần lượt 20.14 và 9.50 KB minified.
 - `src/styles/design-system.css`: trạng thái kéo thả nhận diện được, chuyển màu ngắn; giữ focus và reduced motion hiện có.
 - `e2e/wireframe.spec.js` và `e2e/production-states.spec.js`: kiểm bộ lọc ở preview và production API fixture, ảnh kéo thả hợp lệ và tệp sai định dạng. Không thêm dữ liệu mẫu vào ứng dụng live.
-- Ảnh trước/sau và nhận xét từng màn trong `docs/FRONTEND_VISUAL_AUDIT.md`.
+- Ảnh trước/sau và nhận xét từng màn trong `docs/phase-reports/FRONTEND_VISUAL_AUDIT.md`.
 
 Không chỉnh Google OIDC, session, RBAC, API, backend business logic, migration, schema, email hoặc worker. Không cài skill bằng script từ Internet; tham khảo trực tiếp [UI UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill), [Anthropic frontend-design](https://github.com/anthropics/skills/blob/main/skills/frontend-design/SKILL.md) và [Vercel Agent Skills](https://github.com/vercel-labs/agent-skills).
 

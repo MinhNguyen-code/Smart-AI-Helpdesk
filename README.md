@@ -22,10 +22,9 @@ Smart IT Helpdesk là hệ thống quản lý yêu cầu hỗ trợ sự cố t�
 D:\Smart IT Helpdesk
 ├── src/                         # Frontend React + Vite
 │   ├── api/                     # API client gọi backend
-│   ├── components/              # UI components dùng chung (Layout, Form, Modal, Badges, Charts)
-│   ├── features/                # Modules tính năng (auth, tickets, kanban, rules, sla, notifications, dashboard)
-│   ├── hooks/                   # Custom React hooks
-│   └── utils/                   # Hàm tiện ích giao diện
+│   ├── components/              # Thành phần minh họa và giao diện hỗ trợ
+│   ├── features/                # Ticket, Rules, Dashboard, Notifications, Users và test giao diện
+│   └── styles/                  # Design tokens và CSS giao diện
 ├── server/                      # Backend Express
 │   ├── src/
 │   │   ├── config/              # Cấu hình môi trường & database
@@ -35,7 +34,8 @@ D:\Smart IT Helpdesk
 │   │   ├── workers/             # SLA breach detection worker
 │   │   └── app.js               # Express application entry
 │   ├── migrations/              # Database migration files (Knex)
-│   ├── seeds/                   # Dữ liệu khởi tạo (Rules, SLA policies, Categories, Initial users)
+│   ├── seeds/                   # Dữ liệu tham chiếu (Rules, SLA policies, Categories)
+│   ├── scripts/                 # Lệnh vận hành và kiểm tra
 │   ├── tests/                   # Integration & unit tests
 │   └── private-uploads/         # Thư mục lưu trữ file đính kèm an toàn
 ├── docs/                        # Tài liệu kỹ thuật dự án
@@ -46,7 +46,11 @@ D:\Smart IT Helpdesk
 │   ├── IMPLEMENTATION_PLAN.md   # Kế hoạch 7 ngày
 │   ├── TEST_PLAN.md             # Kế hoạch kiểm thử
 │   ├── DAILY_PROGRESS.md        # Nhật ký tiến độ hằng ngày
-│   └── phase-reports/           # Báo cáo nghiệm thu từng Day
+│   ├── phase-reports/           # Báo cáo checkpoint và frontend có ngày tháng
+│   ├── screenshots/             # Ảnh bằng chứng preview, fixture và API test
+│   ├── benchmarks/              # Kết quả đo theo từng môi trường
+│   ├── references/              # Ánh xạ tới ảnh Wireframe gốc
+│   └── database/                # Tài liệu cô lập cơ sở dữ liệu
 ├── Diagrams/                    # Tài liệu sơ đồ thiết kế gốc (Read-only)
 ├── Wireframe/                   # 7 ảnh wireframe thiết kế giao diện gốc (Read-only)
 ├── package.json                 # Cấu hình scripts & dependencies
@@ -112,4 +116,4 @@ Ba vai trò là `ADMIN`, `IT_AGENT`, `END_USER`. Chủ dự án cấu hình các
 
 ## 5. Trạng thái dự án
 
-API Ticket, Rules, ACK/SLA, notification, outbox, analytics và quản trị người dùng có test MySQL trên `smart_it_helpdesk_new_test`. Bảy wireframe có ảnh Playwright preview và các trang API/MySQL test. Checkpoint cuối vẫn **PARTIAL** cho đến khi nghiệm thu Google ba vai trò thật, SMTP ngoài ứng dụng và kỳ quan sát uptime 99%. Xem `docs/phase-reports/FINAL-ACCEPTANCE-2026-11-17.md`.
+API Ticket, Rules, ACK/SLA, notification, outbox, analytics và quản trị người dùng có test MySQL trên `smart_it_helpdesk_new_test`. Bảy wireframe có ảnh Playwright preview và các trang API/MySQL test. Checkpoint nghiệm thu dự án vẫn **PARTIAL** cho đến khi nghiệm thu Google ba vai trò thật, SMTP ngoài ứng dụng và kỳ quan sát uptime 99%. Xem báo cáo gốc `docs/phase-reports/FINAL-ACCEPTANCE-2026-11-17.md`, bản tiếp tục `docs/phase-reports/FINAL-ACCEPTANCE-CONTINUATION-2026-11-17.md` và kiểm kê sau đó `docs/phase-reports/PRE-PUSH-AUDIT-2026-11-17.md`. Các báo cáo frontend có ngày tháng nằm trong `docs/phase-reports/`; tài liệu thiết kế đang dùng vẫn ở `docs/FRONTEND_DESIGN_SYSTEM.md`.

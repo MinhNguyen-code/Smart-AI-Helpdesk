@@ -20,4 +20,4 @@ Tài liệu này xác nhận và ghi nhận đối chiếu chi tiết 7 tệp h�
 
 ## 2. Quy Chuẩn Thiết Kế Giao Diện
 - Không tạo các ảnh wireframe giữ chỗ (placeholder) khi đã có 7 ảnh thiết kế thực tế.
-- Tất cả các màn hình React trong thư mục `src/` sẽ được triển khai bám sát 100% bố cục, màu sắc, khoảng cách và kiểu dáng nút/thẻ/bảng từ các file ảnh trên.
+- Các màn hình React trong `src/` dùng bảy ảnh trên làm tham chiếu bố cục và nhận diện chính. Khác biệt đã được ghi trong `docs/phase-reports/FRONTEND_VISUAL_AUDIT.md`; chưa có phép đo pixel chứng minh mức độ khớp tuyệt đối.
