@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { Clock3, Paperclip } from 'lucide-react';
 import { priorities, statuses } from './previewData';
+import TicketProgress from './TicketProgress';
 
 const base = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const impacts = { individual: 'Cá nhân', department: 'Phòng ban', organization: 'Toàn tổ chức' };
@@ -20,7 +21,9 @@ export default function TicketDetail({ ticket, preview, user, categories, agents
     }
     setFileError(''); setFile(selected);
   }
-  return <div className="ticket-detail"><section>
+  return <><TicketProgress status={ticket.status} />
+  <div className="ticket-mobile-summary"><div><strong>Hạn xử lý SLA</strong><Sla ticket={ticket} /></div><Badge priority={ticket.priority} /></div>
+  <div className="ticket-detail"><section>
     <h3>Mô tả chi tiết</h3><p className="description">{ticket.description}</p>
     <div className="attachments"><h3>Tệp đính kèm</h3>{ticket.attachments?.length ? ticket.attachments.map(item => <a key={item.id} href={`${base}/tickets/${ticket.id}/attachments/${item.id}`} className="attachment-link"><Paperclip size={16} />{item.original_filename}<small>{Math.ceil(item.size_bytes / 1024)} KB</small></a>) : <p className="muted">Chưa có tệp đính kèm.</p>}
       {!preview && <form className="attachment-form" onSubmit={event => { event.preventDefault(); if (!file) return; onUpload(file).then(ok => { if (ok) setFile(null); }); }}><input id={fileInputId} className="file-input" type="file" aria-label="Chọn ảnh đính kèm" accept="image/png,image/jpeg,image/webp" onChange={event => choose(event.target.files[0])} /><label htmlFor={fileInputId} className="button secondary file-trigger"><Paperclip size={16} aria-hidden="true"/>Chọn ảnh</label><span className="muted">{file?.name || 'Chưa chọn ảnh'}</span><button className="button secondary" disabled={!file || busy}>Tải ảnh lên</button></form>}
@@ -39,5 +42,5 @@ export default function TicketDetail({ ticket, preview, user, categories, agents
     <div className="detail-field"><strong>Mức độ ảnh hưởng</strong><span>{impacts[ticket.impact] || ticket.impact}</span></div>
     <div className="detail-field"><strong>Mức độ ưu tiên</strong><Badge priority={ticket.priority} /></div>
     <div className="evidence"><strong>Từ khóa nhận diện</strong><small>RULE-BASED</small><p>{ticket.priority_reason || `Ưu tiên ${priorities[ticket.priority] || ticket.priority}`}</p></div>
-  </aside></div>;
+  </aside></div></>;
 }
