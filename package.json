@@ -26,6 +26,7 @@
     "db:migrate:test": "node server/scripts/databaseCommand.js migrate test",
     "db:check": "node server/scripts/databaseCommand.js check development",
     "db:check:test": "node server/scripts/databaseCommand.js check test",
+    "session:cleanup": "node server/scripts/cleanupSessions.js",
     "test:integration": "node --test --test-concurrency=1 server/tests/integration/*.test.js",
     "test:frontend": "vitest run",
     "test:browser": "playwright test",

@@ -12,7 +12,7 @@ async function probe() {
     const response = await fetch(endpoint, { signal: AbortSignal.timeout(5000) });
     const result = await response.json();
     return { durationMs: performance.now() - started,
-      ok: response.status === 200 && result.status === 'READY' && result.database?.connected === true && result.database?.isTargetVerified === true,
+      ok: response.status === 200 && result.status === 'READY',
       status: response.status };
   } catch (error) { return { durationMs: performance.now() - started, ok: false, error: error.name }; }
 }

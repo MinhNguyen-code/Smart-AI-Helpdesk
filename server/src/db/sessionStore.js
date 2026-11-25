@@ -21,4 +21,19 @@ export class DatabaseSessionStore extends session.Store {
   destroy(id, callback = () => {}) {
     this.database('sessions').where({ session_id: id }).delete().then(() => callback()).catch(callback);
   }
+
+  async pruneExpired(cutoff = Date.now()) {
+    if (!Number.isSafeInteger(cutoff) || cutoff < 0) throw new RangeError('Invalid session cleanup cutoff');
+    let removed = 0;
+    for (let batch = 0; batch < 10; batch += 1) {
+      const ids = await this.database('sessions').where('expires', '<=', cutoff)
+        .orderBy('expires').limit(500).pluck('session_id');
+      if (!ids.length) break;
+      // A concurrent renewal can move expires forward after the selection.
+      removed += await this.database('sessions').whereIn('session_id', ids)
+        .where('expires', '<=', cutoff).delete();
+      if (ids.length < 500) break;
+    }
+    return removed;
+  }
 }

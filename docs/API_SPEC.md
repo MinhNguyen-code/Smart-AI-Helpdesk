@@ -12,8 +12,8 @@ Các endpoint trong mục 1–8 đã có mã. Các nhóm nghiệp vụ có kiể
 ## 1. Hệ thống
 
 - `GET /api`: metadata API.
-- `GET /api/v1/health`: liveness, trả 200 khi Express chạy.
-- `GET /api/v1/ready`: readiness truy vấn MySQL thật; 200 khi kết nối đúng schema, 503 nếu chưa sẵn sàng.
+- `GET /api/v1/health`: liveness, trả 200 `{ "status": "UP" }` khi Express chạy.
+- `GET /api/v1/ready`: readiness truy vấn MySQL thật và xác minh schema đích; trả 200 `{ "status": "READY" }` hoặc 503 `{ "status": "NOT_READY" }`. Phản hồi công khai không chứa tên schema, runtime hoặc chi tiết kết nối.
 
 ## 2. Xác thực
 
@@ -29,7 +29,7 @@ Các endpoint trong mục 1–8 đã có mã. Các nhóm nghiệp vụ có kiể
 - `GET /api/v1/agents`: danh sách `{id, full_name}` IT Agent đang hoạt động; Admin/IT Agent.
 - `GET /api/v1/tickets?page=1&search=...&status=...`: `{items, total, page, pageSize}`; mỗi trang tối đa 30. End-User chỉ xem ticket của mình.
 - `POST /api/v1/tickets`: JSON `{title, description, impact, category_id}`; trả ticket 201. Priority/SLA/history/notification ghi trong cùng transaction.
-- `GET /api/v1/tickets/:id`: ticket, `comments`, `history`, `attachments` metadata; 404 nếu không có quyền xem.
+- `GET /api/v1/tickets/:id`: ticket, `comments`, `history`, `attachments` metadata; 404 nếu không có quyền xem. Với END_USER, `comments` chỉ gồm phản hồi public và `history` không gồm event `COMMENT_ADDED` của ghi chú internal hoặc comment đã mất; ADMIN/IT_AGENT thấy lịch sử đầy đủ.
 - `GET /api/v1/tickets/:id/comments`: phản hồi; End-User chỉ xem phản hồi public.
 - `POST /api/v1/tickets/:id/comments`: JSON `{message, visibility?}`. Chỉ staff được gửi `internal`.
 - `PATCH /api/v1/tickets/:id/assign`: JSON `{assignee_id, version}`; staff, IT Agent chỉ được nhận chính mình.
@@ -89,4 +89,5 @@ Các endpoint kiểm tra vai trò và trạng thái hoạt động từ MySQL, k
 
 - `?preview=1` chỉ hoạt động trong Vite **development mode**; bản build production yêu cầu session thật và không hiển thị liên kết preview. Preview không gọi API nghiệp vụ thật.
 - `/health` và `/ready` được đặt trước API rate limiter để probe phản ánh trạng thái dịch vụ; readiness vẫn truy vấn MySQL.
+- `npm run session:cleanup` đếm session hết hạn sau khi xác minh schema/account đích, không xóa dữ liệu; `npm run session:cleanup -- --apply` mới dọn tối đa 5.000 session hết hạn mỗi lượt và kiểm tra lại hạn ngay trước khi xóa. Chỉ lên lịch ở môi trường đã được phê duyệt và theo dõi số còn lại.
 - Mọi kết nối Knex đặt session MySQL về UTC. Migration chỉ nhắm hai schema `smart_it_helpdesk_new_dev` và `smart_it_helpdesk_new_test` bằng tài khoản migration riêng.
