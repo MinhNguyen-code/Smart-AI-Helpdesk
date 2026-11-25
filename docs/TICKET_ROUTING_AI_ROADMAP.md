@@ -1,6 +1,6 @@
 # Kế hoạch phân tuyến ticket theo đơn vị và ứng dụng AI/LLM
 
-> Cập nhật 25/11/2026: chủ dự án chọn tự giao cho người đang nhận việc ít ticket mở nhất và IT_AGENT đọc queue chung, chỉ xử lý trong nhóm. R1/R2 đã có code/migration mới/UI, đang kiểm chứng CI và chưa bật local. Contract hiện hành của bản code tại [TICKET_ROUTING_SPEC.md](TICKET_ROUTING_SPEC.md), evidence tại [báo cáo routing](phase-reports/TICKET-ROUTING-2026-11-25.md). Nội dung ngày 19/11 dưới đây là roadmap lịch sử; lựa chọn auto-assignment ngày 25/11 thay bước duyệt từng ticket trong R1/R2. R3/LLM tiếp tục chưa triển khai.
+> Cập nhật 25/11/2026: chủ dự án chọn tự giao cho người đang nhận việc ít ticket mở nhất và IT_AGENT đọc queue chung, chỉ xử lý trong nhóm. R1/R2 đã có code/migration mới/UI; CI 45596773838 PASS (MySQL 19/19, upgrade/restore cô lập), chưa bật local. Contract hiện hành của bản code tại [TICKET_ROUTING_SPEC.md](TICKET_ROUTING_SPEC.md), evidence tại [báo cáo routing](phase-reports/TICKET-ROUTING-2026-11-25.md). Nội dung ngày 19/11 dưới đây là roadmap lịch sử; lựa chọn auto-assignment ngày 25/11 thay bước duyệt từng ticket trong R1/R2. R3/LLM tiếp tục chưa triển khai.
 
 Ngày lập: 19/11/2026. Trạng thái: **bốn nhóm khởi đầu đã được chủ dự án xác nhận; routing và LLM chưa triển khai**. Danh sách thành viên, quyền chuyển tuyến và migration vẫn chờ review riêng.
 

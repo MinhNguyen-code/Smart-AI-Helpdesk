@@ -4,6 +4,8 @@
 
 Chủ dự án chọn auto-assign cho người đúng nhóm đang nhận việc có ít ticket mở nhất; IT_AGENT đọc hàng chờ chung, chỉ xử lý trong nhóm. Code migration số 7/API/UI/guards và bộ kiểm tra CI đã thêm, mặc định tắt. Local chưa migrate, chưa cấu hình thành viên thật, không đổi ba trạng thái MVP. Tiến độ và số kiểm chứng cuối: [TICKET-ROUTING-2026-11-25.md](phase-reports/TICKET-ROUTING-2026-11-25.md). Các checkpoint lịch sử dưới đây giữ nguyên theo ngày.
 
+Nguồn `ca527c6`, draft PR #7, CI **45596773838 PASS** hai job: backend **36/36**, frontend **24/24**, MySQL integration **19/19**, upgrade giữ dữ liệu cũ, restore **18 bảng** bằng hash schema/hàng trên service CI mới; 18 create đồng thời chia 8/8 và 2 chờ khi capacity 8. Build/audit PASS (0 vulnerabilities); local browser API fixtures **6/6**, không là Google routing E2E. Trạng thái rollout local vẫn **PARTIAL** chờ duyệt schema và chọn thành viên thật.
+
 | Giai đoạn | Ngày thực hiện | Mục tiêu trọng tâm | Trạng thái | Báo cáo chi tiết |
 |---|---|---|---|---|
 | **Day 1** | 10/11/2026 | Nền tảng React/Vite, Express, Knex, migration đầu tiên, health/ready và tài liệu | **PARTIAL tại checkpoint** (MySQL thật được nghiệm thu ngày 11/11; kết quả test lịch sử chưa đủ log để xác minh) | `docs/phase-reports/DAY-01-REPORT.md` |
