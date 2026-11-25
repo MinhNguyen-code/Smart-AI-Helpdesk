@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { db } from '../db/index.js';
 import { createNotifications } from '../modules/notificationService.js';
 
@@ -33,30 +34,67 @@ export async function runSlaCheck(database = db, afterId = 0, now = new Date()) 
   return { checked: tickets.length, notified, cursor: tickets.length === 100 ? tickets.at(-1).id : 0 };
 }
 
-if (process.argv[1]?.endsWith('slaWorker.js')) {
+export function startSlaWorker({ check = runSlaCheck, logger = console } = {}) {
   let stopped = false;
   let cursor = 0;
+  let retryDelay = 1000;
   let timer;
-  let consecutiveErrors = 0;
-  const shutdown = async () => { stopped = true; clearTimeout(timer); await db.destroy(); };
-  process.once('SIGINT', shutdown);
-  process.once('SIGTERM', shutdown);
+  let active;
+
   async function tick() {
+    let delay;
     try {
-      const result = await runSlaCheck(db, cursor);
-      consecutiveErrors = 0;
+      const result = await check(db, cursor);
       cursor = result.cursor;
-      console.log(JSON.stringify({ event: 'sla_check', ...result }));
+      retryDelay = 1000;
+      delay = cursor ? 1000 : 60000;
+      logger.log(JSON.stringify({ event: 'sla_check', ...result }));
     } catch (error) {
-      consecutiveErrors++;
-      console.error(JSON.stringify({ event: 'sla_check_failed', code: error.code || 'WORKER_FAILURE' }));
-      if (consecutiveErrors >= 3) {
-        await shutdown();
-        process.exitCode = 1;
-      }
+      delay = retryDelay;
+      retryDelay = Math.min(retryDelay * 2, 60000);
+      logger.error(JSON.stringify({
+        event: 'sla_check_failed',
+        code: error.code || 'WORKER_FAILURE',
+        retryInMs: delay,
+      }));
+    }
+    if (!stopped) timer = setTimeout(launch, delay);
+  }
+
+  function launch() {
+    active = tick();
+  }
+
+  launch();
+  return {
+    async stop() {
+      stopped = true;
+      clearTimeout(timer);
+      await active;
+    },
+  };
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const worker = startSlaWorker();
+  let stopping = false;
+  async function shutdown() {
+    if (stopping) return;
+    stopping = true;
+    const timeout = setTimeout(() => {
+      console.error('SLA worker shutdown timed out.');
+      process.exit(1);
+    }, 10000);
+    try {
+      await worker.stop();
+      await db.destroy();
+    } catch (error) {
+      console.error('SLA worker shutdown failed:', error.code || 'WORKER_FAILURE');
+      process.exitCode = 1;
     } finally {
-      if (!stopped) timer = setTimeout(tick, cursor ? 1000 : 60000);
+      clearTimeout(timeout);
     }
   }
-  tick();
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }
