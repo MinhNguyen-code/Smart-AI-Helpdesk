@@ -22,3 +22,21 @@ This is a small single-ticket read scenario, not write load, Google authenticati
 JSON summaries are retained as a seven-day GitHub Actions artifact `mysql-operational-evidence`. The SQL dump is not uploaded. `.ci-evidence/` is ignored by Git; no real user data or session secret is printed in the JSON reports.
 
 Local checks: evidence CLI JavaScript syntax PASS; environment-guard unit test **1/1 PASS** (missing/incorrect markers, development schema, root, external host and self-hosted runner rejected); actionlint and three outer/one inner shell syntax checks PASS. Docker service execution, backup contents/restore equality and HTTP/MySQL timings remain **NOT VERIFIED until this branch's CI run**. No CLI fixture mode has been executed against a local database.
+
+## First CI result and local observation campaign
+
+[First branch CI](https://github.com/MinhNguyen-code/Smart-AI-Helpdesk/actions/runs/45529986795) on `0faadb5` completed successfully: existing MySQL integration **9/9**, five warmups + **104 measured HTTP reads / 0 errors**, and restore equality for schema/rows across **14 tables**. Node 24.22.3 read-detail p95: **11.398 / 14.954 / 20.412 ms** at concurrency **1 / 4 / 8**, using 8/32/64 samples. These small synthetic CI measurements retain all limitations above. JSON artifact `mysql-operational-evidence` was uploaded; no SQL dump was uploaded.
+
+The local availability monitor was started with all three probes returning 200. Historical log gaps make its old aggregate unsuitable for the newly confirmed observation period, so the monitor/reporter now accept `MONITOR_LOG_FILE=availability-20261125.jsonl`. The default filename is unchanged, paths are restricted to simple JSONL filenames under `server/monitoring`, and prior logs are preserved. A unit case checks default/custom paths and rejects traversal/absolute paths. Use the same filename for collection and reporting:
+
+```powershell
+$env:MONITOR_LOG_FILE='availability-20261125.jsonl'
+$env:BUSINESS_TIMEZONE='Asia/Ho_Chi_Minh'
+$env:BUSINESS_START_HOUR='8'
+$env:BUSINESS_END_HOUR='17'
+npm.cmd run monitor:availability
+# In another PowerShell with the same environment:
+npm.cmd run report:availability
+```
+
+The local monitor is a session process, not an installed/reboot-persistent service. Uptime remains **NOT_VERIFIED** until at least ten business days and 95% minute coverage. Stopping the computer/session interrupts observation. No future 99% claim is inferred from the first successful probe. The report-only/monitor-path follow-up requires a new CI run; the first run's operational results are not relabelled as results for a later commit.
