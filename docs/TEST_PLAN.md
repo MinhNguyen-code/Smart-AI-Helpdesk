@@ -92,6 +92,8 @@ npm.cmd run report:availability
 
 `test:integration`, `test:browser:api` và `benchmark:triage:api` hiện có thao tác `DELETE` fixture và một số bài chỉnh rồi khôi phục SLA policy trong `smart_it_helpdesk_new_test`. Không chạy các lệnh này khi quy định hiện hành cấm SQL phá hủy. Kết quả PASS trước đây giữ là bằng chứng lịch sử, không thay cho kiểm tra lại lượt này.
 
+PR 2 bổ sung regression cho ghi chú internal trong ticket detail, quyền thay đổi khi role/active flag đổi, CSRF/Origin, logout, readiness payload và dọn session hết hạn. Bài `server/tests/integration/*.test.js` có ghi/xóa SQL nên chỉ được thực thi với schema test biệt lập được phê duyệt riêng; việc thêm assertion không đồng nghĩa đã chạy thành công. Workflow `.github/workflows/ci.yml` hiện chạy unit/API, frontend, build và dependency audit; chưa có MySQL integration job vì chưa provision service container/account test riêng trong CI.
+
 Benchmark Kanban production dùng API fixture chỉ trong Playwright: 30 thẻ được render theo phân trang khi `total=30/300/3000`, 1/4/8 client, 40 lượt đo mỗi cấu hình. Nó đo UI production và không xác nhận tốc độ SQL với 3.000 ticket thật. Benchmark `/ready` đo Express production + MySQL thật nhưng không đo endpoint ticket. Xem `docs/benchmarks/kanban-production-fixture.json` và `docs/benchmarks/readiness-production.json`.
 
 Monitor v2 chỉ tính mẫu khi cùng lịch giờ làm việc và có cả HTTP health, ready, web. Mặc định thứ Hai–Sáu 08:00–17:00 `Asia/Ho_Chi_Minh` theo timezone ưu tiên trong `Codex.md`; giờ bắt đầu/kết thúc vẫn là giả định chờ chủ dự án xác nhận. Cần cấu hình `MONITOR_ORIGIN` và `MONITOR_WEB_ORIGIN` thành URL vận hành thật và quan sát đủ ít nhất 10 ngày làm việc, độ phủ theo phút từ 95% trước khi kết luận 99%.
