@@ -91,10 +91,19 @@ router.get('/tickets/:id', handle(async (req, res) => {
   const comments = db('ticket_comments as comment').leftJoin('users as author', 'author.id', 'comment.author_id')
     .where('comment.ticket_id', ticket.id).select('comment.*', 'author.full_name as author_name');
   if (req.user.role === 'END_USER') comments.where('comment.visibility', 'public');
+  const history = db('ticket_history as event').where('event.ticket_id', ticket.id).select('event.*');
+  if (req.user.role === 'END_USER') {
+    // A comment event includes its actor, timestamp and comment ID. Only expose it when
+    // the referenced comment is public; orphaned comment events remain staff-only.
+    history.where(builder => builder.whereNot('event.event_type', 'COMMENT_ADDED').orWhereExists(
+      db('ticket_comments as visible_comment').select(db.raw('1'))
+        .whereColumn('visible_comment.id', 'event.new_value')
+        .where('visible_comment.ticket_id', ticket.id).where('visible_comment.visibility', 'public')));
+  }
   const reporter = await db('users').where('id', ticket.reporter_id).select('full_name').first();
   const assignee = ticket.assignee_id && await db('users').where('id', ticket.assignee_id).select('full_name').first();
   res.json({ ...ticket, reporter_name: reporter?.full_name, assignee_name: assignee?.full_name,
-    comments: await comments.orderBy('comment.id'), history: await db('ticket_history').where('ticket_id', ticket.id).orderBy('id'),
+    comments: await comments.orderBy('comment.id'), history: await history.orderBy('event.id'),
     attachments: await db('ticket_attachments').where('ticket_id', ticket.id).select('id', 'original_filename', 'mime_type', 'size_bytes', 'created_at').orderBy('id') });
 }));
 router.post('/tickets/:id/attachments', uploadOne, handle(async (req, res) => {
