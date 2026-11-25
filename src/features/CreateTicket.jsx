@@ -4,7 +4,7 @@ import { ArrowRight, Paperclip, X } from 'lucide-react';
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp'];
 const maxImageBytes = 10 * 1024 * 1024;
 
-export default function CreateTicket({ categories, onSubmit, onCancel, busy, preview }) {
+export default function CreateTicket({ categories, onSubmit, onCancel, busy, preview, idempotent }) {
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState('');
   const [formError, setFormError] = useState('');
@@ -13,6 +13,7 @@ export default function CreateTicket({ categories, onSubmit, onCancel, busy, pre
   const fileInputRef = useRef(null);
   const titleRef = useRef(null);
   const descriptionRef = useRef(null);
+  const attempt = useRef(null);
 
   useEffect(() => {
     if (!file) { setImage(''); return; }
@@ -43,7 +44,13 @@ export default function CreateTicket({ categories, onSubmit, onCancel, busy, pre
     if (!description) { setFormError('Nhập mô tả chi tiết để đội IT xử lý.'); descriptionRef.current?.focus(); return; }
     if (!Number.isSafeInteger(categoryId) || categoryId < 1) { setFormError('Chọn danh mục sự cố.'); return; }
     setFormError('');
-    onSubmit({ title, description, impact: data.get('impact'), category_id: categoryId }, file);
+    const fields = { title, description, impact: data.get('impact'), category_id: categoryId };
+    if (idempotent && globalThis.crypto?.randomUUID) {
+      const key = JSON.stringify(fields);
+      if (attempt.current?.key !== key) attempt.current = { key, id: globalThis.crypto.randomUUID() };
+      fields.request_id = attempt.current.id;
+    }
+    onSubmit(fields, file);
   }
 
   return <div className="create-page">
