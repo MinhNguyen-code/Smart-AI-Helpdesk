@@ -17,3 +17,11 @@ Backend unit/API 22/22, MySQL transaction rollback 1/1, frontend 4/4, browser wi
 ## Tổ chức repository — 17/11/2026
 
 Các số liệu ở mục trên là snapshot nghiệm thu trước đó, được giữ nguyên. Báo cáo kiểm kê sau mốc này tại `docs/phase-reports/PRE-PUSH-AUDIT-2026-11-17.md` ghi preview 10/10 và production fixture 9/9 ở lần chạy riêng. Theo `docs/REPOSITORY_ORGANIZATION_PLAN.md`, Bước 2 chỉ chuyển ba báo cáo frontend có ngày tháng vào `docs/phase-reports/` và đồng bộ tham chiếu/tài liệu. Lần kiểm chứng riêng cho Bước 2: `npm.cmd test` 22/22 sau khi chạy lại với quyền loopback (lần đầu 14/22 vì `EACCES` loopback), `npm.cmd run test:frontend` 4/4, `npm.cmd run build` PASS, production browser guard fixture 1/1. Không chạy migration, seed hoặc test MySQL ghi/xóa; không dùng fixture để xác nhận Google E2E. Trạng thái nghiệm thu chức năng tổng thể vẫn **PARTIAL**.
+
+## Google thật và ổn định MVP — 25/11/2026
+
+**PASS cho kịch bản nghiệm thu đã quan sát:** chủ dự án trực tiếp đăng nhập Google ba vai trò trong Edge; END_USER tạo ticket tổng hợp kèm ảnh, IT_AGENT nhận/ACK/phản hồi/giải quyết, ADMIN kiểm Rules/SLA/users/dashboard. END_USER bị 404 khi đọc ticket người khác; END_USER/IT_AGENT bị 403 khi đọc users. Restart API giữ phiên ADMIN và nguyên ticket/ảnh/comments/history/notification; END_USER sau đó mở thông báo và đọc kết quả RESOLVED. Chỉ tạo/xử lý một ticket nghiệm thu có nhãn; không chạy fixture SQL, migration hay cleanup local.
+
+Sửa hai lỗi frontend được phát hiện: chi tiết vừa tạo không tải lại ảnh/lịch sử, và lỗi tạm thời 429/503 bị hiểu nhầm thành đăng xuất. Frontend **15/15**, build **PASS**, lặp lại trên snapshot nhánh UI sạch. Nhóm worker: backend snapshot sạch **27/27** qua hai lần chạy không kết nối DB thành công. Nhóm priority hotfix: **6/6**, benchmark tổng hợp 500 rule/20 KB p95 **5,328 ms**, chỉ trong tiến trình. CI PR #2 tại `505baa8` xác minh **9/9 MySQL integration** trong service cô lập.
+
+Chủ dự án chọn giữ **ba trạng thái**, SMTP để sau, lịch uptime tạm Mon–Fri 08:00–17:00 giờ Việt Nam. Không bật workflow năm trạng thái, alias/fuzzy v2, routing hay AI. Tổng dự án vẫn **PARTIAL** cho các phạm vi chưa nghiệm thu như tài khoản ngoài allowlist, backup/restore và uptime. Chi tiết: `docs/phase-reports/REAL-GOOGLE-ACCEPTANCE-2026-11-25.md` và `docs/phase-reports/LOCAL-CHANGE-REVIEW-2026-11-25.md`.
