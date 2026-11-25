@@ -22,6 +22,7 @@ server/monitoring/*.jsonl
 
 # Testing & Coverage
 coverage/
+.ci-evidence/
 playwright-report/
 test-results/
 

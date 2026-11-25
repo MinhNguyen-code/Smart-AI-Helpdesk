@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "node server/src/index.js",
+    "start:with-sla": "node server/src/index.js --with-sla-worker",
     "dev:client": "vite",
     "build": "vite build",
     "preview": "vite preview",
@@ -26,6 +27,7 @@
     "db:migrate:test": "node server/scripts/databaseCommand.js migrate test",
     "db:check": "node server/scripts/databaseCommand.js check development",
     "db:check:test": "node server/scripts/databaseCommand.js check test",
+    "session:cleanup": "node server/scripts/cleanupSessions.js",
     "test:integration": "node --test --test-concurrency=1 server/tests/integration/*.test.js",
     "test:frontend": "vitest run",
     "test:browser": "playwright test",

@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import { readFile } from 'node:fs/promises';
-import path from 'node:path';
 import { businessHoursConfig, localBusinessMinute } from './businessHours.js';
+import { availabilityLogPath } from './availabilityLog.js';
 
-const source = path.resolve('server/monitoring/availability.jsonl');
+const source = availabilityLogPath();
 let lines;
 try { lines = (await readFile(source, 'utf8')).split(/\r?\n/).filter(Boolean); }
 catch (error) { if (error.code !== 'ENOENT') throw error; lines = []; }

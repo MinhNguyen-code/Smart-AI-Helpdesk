@@ -1,0 +1,22 @@
+.routing-page { margin: 0 24px 28px; }
+.routing-page .panel { margin-bottom: 20px; }
+.routing-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.routing-actions, .routing-save { display: flex; gap: 12px; align-items: center; justify-content: space-between; margin: 0 0 18px; flex-wrap: wrap; }
+.routing-units { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.routing-unit { min-width: 0; border: 1px solid var(--border, #e2e8f0); border-radius: 10px; padding: 16px; }
+.routing-unit legend { font-weight: 700; font-size: 12px; letter-spacing: .04em; padding: 0 6px; }
+.routing-member { border-top: 1px solid var(--border, #e2e8f0); padding: 12px 0; }
+.routing-member small { display: block; color: var(--muted, #64748b); overflow-wrap: anywhere; }
+.routing-member .check-label { margin-bottom: 6px; }
+.routing-add { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-top: 16px; }
+.routing-add label { flex: 1 1 180px; margin: 0; }
+.routing-route { display: grid; grid-template-columns: minmax(130px, 1fr) minmax(180px, 1fr) minmax(180px, 2fr); align-items: center; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border, #e2e8f0); }
+.routing-route label { margin: 0; }
+.routing-availability { margin: 0 24px 18px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; }
+.routing-availability .check-label { margin: 0; }
+.routing-controls { border: 1px solid var(--border, #e2e8f0); border-radius: 8px; padding: 12px; margin-bottom: 18px; }
+.routing-controls summary { cursor: pointer; font-weight: 600; }
+.routing-controls form { margin-top: 14px; }
+.routing-summary { display: block; font-weight: 500; overflow-wrap: anywhere; }
+@media (max-width: 950px) { .routing-units, .routing-route { grid-template-columns: 1fr; } }
+@media (max-width: 768px) { .routing-page { margin: 0 16px 24px; } .routing-availability { margin: 0 16px 18px; } }

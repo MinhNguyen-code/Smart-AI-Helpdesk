@@ -12,6 +12,7 @@ import notificationRoutes from './modules/notificationRoutes.js';
 import analyticsRoutes from './modules/analyticsRoutes.js';
 import userRoutes from './modules/userRoutes.js';
 import authRoutes from './modules/authRoutes.js';
+import routingRoutes from './modules/routing/routingRoutes.js';
 import { csrfToken, verifyCsrf } from './middleware/csrf.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
@@ -83,6 +84,7 @@ app.use('/api/v1', verifyCsrf, ruleRoutes);
 app.use('/api/v1', verifyCsrf, notificationRoutes);
 app.use('/api/v1', verifyCsrf, analyticsRoutes);
 app.use('/api/v1', verifyCsrf, userRoutes);
+app.use('/api/v1', verifyCsrf, routingRoutes);
 
 // Fallback for root API probe
 app.get('/api', (req, res) => {

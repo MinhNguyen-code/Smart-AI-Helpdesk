@@ -1,0 +1,80 @@
+.ticket-progress {
+  padding: 14px 24px 16px;
+  border-bottom: 1px solid var(--border-hairline);
+  background: var(--bg-surface);
+}
+.ticket-progress-label {
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+.ticket-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.ticket-progress-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.step-marker {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 24px;
+  height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--bg-surface);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.ticket-progress-steps li.completed .step-marker {
+  color: var(--status-success);
+  border-color: var(--status-success);
+  background: var(--status-success-bg);
+}
+.ticket-progress-steps li[aria-current] { color: var(--accent-indigo); font-weight: 700; }
+.ticket-progress-steps li[aria-current] .step-marker {
+  color: #fff;
+  background: var(--accent-indigo);
+  border-color: var(--accent-indigo);
+}
+.ticket-progress-refresh {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border-hairline);
+}
+.ticket-mobile-summary { display: none; }
+
+@media (max-width: 650px) {
+  .ticket-progress { padding: 8px 20px; }
+  .ticket-progress-label { display: none; }
+  .ticket-progress-steps { gap: 6px; margin-top: 0; }
+  .ticket-progress-steps li { gap: 5px; font-size: 10px; }
+  .ticket-progress-steps .step-marker { flex-basis: 20px; height: 20px; font-size: 10px; }
+  .ticket-progress-refresh { padding: 10px 20px; }
+  .ticket-mobile-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border-hairline);
+    background: var(--bg-canvas);
+  }
+  .ticket-mobile-summary > div { display: flex; flex-direction: column; gap: 3px; }
+  .ticket-mobile-summary strong { color: var(--ink-muted); font-size: 11px; }
+  .ticket-mobile-summary .sla { font-size: 13px; }
+}

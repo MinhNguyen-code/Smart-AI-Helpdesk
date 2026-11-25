@@ -8,6 +8,9 @@ import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 import { classifyPriority, calculateDeadlines, assertStatusTransition } from './ticketPolicy.js';
 import { createNotifications } from './notificationService.js';
+import { hasRouting, routingEnabled, routingError } from './routing/routingPolicy.js';
+import { allocateAgent, initialRouting, lockRouting, presentRouting, requireTicketAction, routingRecipients,
+  routingTransaction, ticketRoutingPermissions } from './routing/routingService.js';
 
 const router = Router();
 const handle = action => (req, res, next) => Promise.resolve(action(req, res)).catch(next);
@@ -53,54 +56,79 @@ router.get('/tickets', handle(async (req, res) => {
     if (!['OPEN', 'IN_PROGRESS', 'RESOLVED'].includes(req.query.status)) fail(400, 'Invalid status');
     query.where('status', req.query.status);
   }
+  if (req.query.routing_status) {
+    if (!routingEnabled() || !['ASSIGNED', 'TEAM_QUEUE', 'REVIEW_REQUIRED'].includes(req.query.routing_status)) fail(400, 'Invalid routing filter');
+    query.where('routing_status', req.query.routing_status);
+  }
   const [{ count }] = await query.clone().count('* as count');
   const items = await query.orderBy('id', 'desc').limit(30).offset((page - 1) * 30);
   const reporters = await db('users').whereIn('id', [...new Set(items.map(item => item.reporter_id))]).select('id', 'full_name');
   const names = new Map(reporters.map(user => [user.id, user.full_name]));
-  res.json({ items: items.map(item => ({ ...item, reporter_name: names.get(item.reporter_id) })), total: Number(count), page, pageSize: 30 });
+  res.json({ items: await Promise.all(items.map(item => presentRouting(db, req.user, { ...item, reporter_name: names.get(item.reporter_id) }))),
+    total: Number(count), page, pageSize: 30, routing: routingEnabled() });
 }));
 router.post('/tickets', handle(async (req, res) => {
-  const { title, description, impact, category_id: categoryId } = req.body;
+  const { title, description, impact } = req.body;
+  const categoryId = req.body.category_id ?? null;
   if (typeof title !== 'string' || !title.trim() || title.length > 255
       || typeof description !== 'string' || !description.trim() || description.length > 20000
       || !['individual', 'department', 'organization'].includes(impact)
-      || !Number.isSafeInteger(categoryId) || categoryId < 1) fail(400, 'Invalid ticket fields');
-  const ticket = await db.transaction(async trx => {
-    if (!await trx('categories').where({ id: categoryId, is_active: true }).first()) fail(400, 'Invalid category');
+      || !(Number.isSafeInteger(categoryId) && categoryId > 0 || routingEnabled() && categoryId === null)) fail(400, 'Invalid ticket fields');
+  const ticket = await routingTransaction(db, async trx => {
+    if (categoryId !== null && !await trx('categories').where({ id: categoryId, is_active: true }).first()) fail(400, 'Invalid category');
     const rules = await trx('priority_rules').where({ is_active: true });
     const decision = classifyPriority({ title, description, impact }, rules);
     const policy = await trx('sla_policies').where({ priority: decision.priority, is_active: true }).first();
     if (!policy) fail(503, 'SLA policy unavailable');
     const deadlines = calculateDeadlines(new Date(), policy);
+    const routing = await initialRouting(trx, { title, description, impact, category_id: categoryId }, req.user.id);
     const [id] = await trx('tickets').insert({ title: title.trim(), description: description.trim(), impact,
       category_id: categoryId, reporter_id: req.user.id, ticket_code: randomUUID().replaceAll('-', ''),
-      priority: decision.priority, priority_reason: decision.reason, priority_evidence: JSON.stringify(decision.evidence), ...deadlines });
+      priority: decision.priority, priority_reason: decision.reason, priority_evidence: JSON.stringify(decision.evidence), ...deadlines, ...routing });
     await trx('ticket_history').insert({ ticket_id: id, actor_id: req.user.id, event_type: 'CREATED', new_value: 'OPEN' });
-    const recipients = await trx('users').where({ is_active: true }).whereIn('role', ['ADMIN', 'IT_AGENT']);
+    const created = await trx('tickets').where({ id }).first();
+    if (hasRouting(created)) await trx('ticket_history').insert({ ticket_id: id, actor_id: req.user.id, event_type: 'ROUTED',
+      new_value: created.owner_unit_id && String(created.owner_unit_id), note: created.routing_status });
+    const recipients = hasRouting(created) ? (await routingRecipients(trx, created)).map(id => ({ id }))
+      : await trx('users').where({ is_active: true }).whereIn('role', ['ADMIN', 'IT_AGENT']);
     if (recipients.length) await createNotifications(trx, recipients.map(user => ({ recipient_id: user.id, ticket_id: id,
-      notification_type: 'TICKET_CREATED', title: 'Yêu cầu hỗ trợ mới', message: title,
+      notification_type: 'TICKET_CREATED', title: 'Yêu cầu hỗ trợ mới', message: hasRouting(created) ? `Ticket ${created.ticket_code}` : title,
       deduplication_key: `created:${id}:${user.id}` })));
-    await trx('audit_logs').insert({ actor_id: req.user.id, action: 'TICKET_CREATED', entity_type: 'ticket', entity_id: String(id) });
-    return trx('tickets').where({ id }).first();
+    await trx('audit_logs').insert({ actor_id: req.user.id, action: 'TICKET_CREATED', entity_type: 'ticket', entity_id: String(id),
+      safe_metadata: hasRouting(created) ? JSON.stringify({ owner_unit_id: created.owner_unit_id, assignee_id: created.assignee_id, routing_status: created.routing_status }) : null });
+    return presentRouting(trx, req.user, created);
   });
   res.status(201).json(ticket);
 }));
 router.get('/tickets/:id', handle(async (req, res) => {
   const ticket = await ticketQuery(db, req.user).where('id', req.params.id).first();
   if (!ticket) fail(404, 'Ticket not found');
+  const permissions = await ticketRoutingPermissions(db, req.user, ticket);
+  const publicOnly = req.user.role === 'END_USER' || (permissions && !permissions.can_read_internal);
   const comments = db('ticket_comments as comment').leftJoin('users as author', 'author.id', 'comment.author_id')
     .where('comment.ticket_id', ticket.id).select('comment.*', 'author.full_name as author_name');
-  if (req.user.role === 'END_USER') comments.where('comment.visibility', 'public');
+  if (publicOnly) comments.where('comment.visibility', 'public');
+  const history = db('ticket_history as event').where('event.ticket_id', ticket.id).select('event.*');
+  if (publicOnly) {
+    history.whereNot('event.event_type', 'ROUTED');
+    // A comment event includes its actor, timestamp and comment ID. Only expose it when
+    // the referenced comment is public; orphaned comment events remain staff-only.
+    history.where(builder => builder.whereNot('event.event_type', 'COMMENT_ADDED').orWhereExists(
+      db('ticket_comments as visible_comment').select(db.raw('1'))
+        .whereColumn('visible_comment.id', 'event.new_value')
+        .where('visible_comment.ticket_id', ticket.id).where('visible_comment.visibility', 'public')));
+  }
   const reporter = await db('users').where('id', ticket.reporter_id).select('full_name').first();
   const assignee = ticket.assignee_id && await db('users').where('id', ticket.assignee_id).select('full_name').first();
-  res.json({ ...ticket, reporter_name: reporter?.full_name, assignee_name: assignee?.full_name,
-    comments: await comments.orderBy('comment.id'), history: await db('ticket_history').where('ticket_id', ticket.id).orderBy('id'),
+  res.json({ ...await presentRouting(db, req.user, ticket), reporter_name: reporter?.full_name, assignee_name: assignee?.full_name,
+    comments: await comments.orderBy('comment.id'), history: await history.orderBy('event.id'),
     attachments: await db('ticket_attachments').where('ticket_id', ticket.id).select('id', 'original_filename', 'mime_type', 'size_bytes', 'created_at').orderBy('id') });
 }));
 router.post('/tickets/:id/attachments', uploadOne, handle(async (req, res) => {
   if (!req.file || !req.file.buffer.length || detectedType(req.file.buffer) !== req.file.mimetype) fail(400, 'Invalid image');
   const ticket = await ticketQuery(db, req.user).where('id', req.params.id).first();
   if (!ticket) fail(404, 'Ticket not found');
+  await requireTicketAction(db, req.user, ticket, 'attach');
   const safeName = path.basename(req.file.originalname).replace(/[\x00-\x1f\x7f]/g, '').slice(0, 255) || 'image';
   const storedName = randomUUID();
   const target = path.join(uploadRoot, storedName);
@@ -109,6 +137,9 @@ router.post('/tickets/:id/attachments', uploadOne, handle(async (req, res) => {
   try {
     await file.writeFile(req.file.buffer);
     const attachment = await db.transaction(async trx => {
+      const current = await ticketQuery(trx, req.user).where('id', ticket.id).forUpdate().first();
+      if (!current) fail(404, 'Ticket not found');
+      await requireTicketAction(trx, req.user, current, 'attach');
       const [id] = await trx('ticket_attachments').insert({ ticket_id: ticket.id, uploaded_by: req.user.id,
         original_filename: safeName, stored_filename: storedName, mime_type: req.file.mimetype, size_bytes: req.file.size });
       await trx('ticket_history').insert({ ticket_id: ticket.id, actor_id: req.user.id, event_type: 'ATTACHMENT_ADDED', new_value: String(id) });
@@ -136,7 +167,8 @@ router.get('/tickets/:id/comments', handle(async (req, res) => {
   if (!ticket) fail(404, 'Ticket not found');
   const query = db('ticket_comments as comment').leftJoin('users as author', 'author.id', 'comment.author_id')
     .where('comment.ticket_id', ticket.id).select('comment.*', 'author.full_name as author_name');
-  if (req.user.role === 'END_USER') query.where('comment.visibility', 'public');
+  const permissions = await ticketRoutingPermissions(db, req.user, ticket);
+  if (req.user.role === 'END_USER' || (permissions && !permissions.can_read_internal)) query.where('comment.visibility', 'public');
   res.json(await query.orderBy('comment.id'));
 }));
 router.post('/tickets/:id/comments', handle(async (req, res) => {
@@ -147,9 +179,10 @@ router.post('/tickets/:id/comments', handle(async (req, res) => {
   const comment = await db.transaction(async trx => {
     const ticket = await ticketQuery(trx, req.user).where('id', req.params.id).forUpdate().first();
     if (!ticket) fail(404, 'Ticket not found');
+    await requireTicketAction(trx, req.user, ticket, 'reply', visibility);
     const [id] = await trx('ticket_comments').insert({ ticket_id: ticket.id, author_id: req.user.id, message: message.trim(), visibility });
     await trx('ticket_history').insert({ ticket_id: ticket.id, actor_id: req.user.id, event_type: 'COMMENT_ADDED', new_value: String(id) });
-    if (req.user.role !== 'END_USER' && !ticket.first_response_at && visibility === 'public') {
+    if (req.user.role !== 'END_USER' && (!hasRouting(ticket) || ticket.reporter_id !== req.user.id) && !ticket.first_response_at && visibility === 'public') {
       await trx('tickets').where({ id: ticket.id, first_response_at: null }).update({ first_response_at: new Date() });
     }
     const recipients = visibility === 'internal'
@@ -168,16 +201,33 @@ router.patch('/tickets/:id/assign', handle(async (req, res) => {
   const { assignee_id: assigneeId, version } = req.body;
   if (!Number.isSafeInteger(assigneeId) || !Number.isSafeInteger(version)) fail(400, 'Invalid assignment');
   if (req.user.role === 'IT_AGENT' && assigneeId !== req.user.id) fail(403, 'Agents may only accept their own assignment');
-  const ticket = await db.transaction(async trx => {
+  const ticket = await routingTransaction(db, async trx => {
+    // Allocation and manual routing lock configuration before the ticket. This
+    // preliminary read never authorizes a write; the locked version is checked below.
+    const observed = await trx('tickets').where('id', req.params.id).first();
+    const settings = routingEnabled() || hasRouting(observed || {}) ? await lockRouting(trx) : null;
     const assignee = await trx('users').where({ id: assigneeId, role: 'IT_AGENT', is_active: true }).first();
     if (!assignee) fail(400, 'Invalid assignee');
     const previous = await trx('tickets').where('id', req.params.id).forUpdate().first();
     if (!previous) fail(404, 'Ticket not found');
     if (previous.version !== version) fail(409, 'Ticket changed; refresh before retry');
-    await trx('tickets').where('id', previous.id).update({ assignee_id: assigneeId, version: version + 1, updated_at: new Date() });
+    if (hasRouting(previous)) {
+      if (!settings) throw routingError(409, 'STALE_VERSION', 'Tuyến đã thay đổi; tải lại ticket trước khi lưu.');
+      await requireTicketAction(trx, req.user, previous, 'assign');
+      if (!previous.owner_unit_id) throw routingError(409, 'ROUTE_REQUIRED', 'Quản trị viên cần chọn nhóm phụ trách trước.');
+      if (previous.assignee_id === assigneeId) throw routingError(409, 'ASSIGNMENT_UNCHANGED', 'Người phụ trách không thay đổi.');
+      if (previous.assignee_id && (typeof req.body.reason !== 'string' || req.body.reason.trim().length < 3 || req.body.reason.length > 1000)) {
+        throw routingError(400, 'REASON_REQUIRED', 'Ghi lý do thay người phụ trách.');
+      }
+      await allocateAgent(trx, previous.owner_unit_id, previous.reporter_id, settings, assigneeId, previous.id);
+    }
+    await trx('tickets').where('id', previous.id).update({ assignee_id: assigneeId, version: version + 1, updated_at: new Date(),
+      ...(hasRouting(previous) ? { routing_status: 'ASSIGNED' } : {}) });
     await trx('ticket_history').insert({ ticket_id: previous.id, actor_id: req.user.id, event_type: 'ASSIGNED', old_value: previous.assignee_id && String(previous.assignee_id), new_value: String(assigneeId) });
     await createNotifications(trx, [{ recipient_id: assigneeId, ticket_id: previous.id, notification_type: 'ASSIGNED', title: 'Ticket được phân công', message: `Ticket ${previous.ticket_code}`, deduplication_key: `assign:${previous.id}:${version}` }]);
-    return trx('tickets').where('id', previous.id).first();
+    if (hasRouting(previous)) await trx('audit_logs').insert({ actor_id: req.user.id, action: 'ROUTING_ASSIGNEE_UPDATED', entity_type: 'ticket', entity_id: String(previous.id),
+      safe_metadata: JSON.stringify({ old_assignee: previous.assignee_id, assignee_id: assigneeId, reason: req.body.reason || null, version: version + 1 }) });
+    return presentRouting(trx, req.user, await trx('tickets').where('id', previous.id).first());
   });
   res.json(ticket);
 }));
@@ -188,6 +238,7 @@ router.post('/tickets/:id/acknowledge', handle(async (req, res) => {
     const previous = await trx('tickets').where('id', req.params.id).forUpdate().first();
     if (!previous) fail(404, 'Ticket not found');
     if (previous.version !== req.body.version) fail(409, 'Ticket changed; refresh before retry');
+    await requireTicketAction(trx, req.user, previous, 'handle');
     if (previous.acknowledged_at || previous.status === 'RESOLVED') fail(409, 'Ticket cannot be acknowledged');
     const now = new Date();
     await trx('tickets').where('id', previous.id).update({ acknowledged_at: now,
@@ -196,7 +247,7 @@ router.post('/tickets/:id/acknowledge', handle(async (req, res) => {
       event_type: 'ACKNOWLEDGED', new_value: now.toISOString() });
     await trx('audit_logs').insert({ actor_id: req.user.id, action: 'TICKET_ACKNOWLEDGED',
       entity_type: 'ticket', entity_id: String(previous.id) });
-    return trx('tickets').where('id', previous.id).first();
+    return presentRouting(trx, req.user, await trx('tickets').where('id', previous.id).first());
   });
   res.json(ticket);
 }));
@@ -207,12 +258,13 @@ router.patch('/tickets/:id/status', handle(async (req, res) => {
     const previous = await trx('tickets').where('id', req.params.id).forUpdate().first();
     if (!previous) fail(404, 'Ticket not found');
     if (previous.version !== req.body.version) fail(409, 'Ticket changed; refresh before retry');
+    await requireTicketAction(trx, req.user, previous, 'handle');
     assertStatusTransition(previous.status, req.body.status);
     const changes = { status: req.body.status, version: previous.version + 1, updated_at: new Date() };
     if (changes.status === 'RESOLVED') changes.resolved_at = new Date();
     await trx('tickets').where('id', previous.id).update(changes);
     await trx('ticket_history').insert({ ticket_id: previous.id, actor_id: req.user.id, event_type: 'STATUS_CHANGED', old_value: previous.status, new_value: changes.status });
-    return trx('tickets').where('id', previous.id).first();
+    return presentRouting(trx, req.user, await trx('tickets').where('id', previous.id).first());
   });
   res.json(ticket);
 }));

@@ -2,8 +2,9 @@ import 'dotenv/config';
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { businessHoursConfig, localBusinessMinute } from './businessHours.js';
+import { availabilityLogPath } from './availabilityLog.js';
 
-const output = path.resolve('server/monitoring/availability.jsonl');
+const output = availabilityLogPath();
 const origin = process.env.MONITOR_ORIGIN || 'http://127.0.0.1:5000';
 const webOrigin = process.env.MONITOR_WEB_ORIGIN || 'http://localhost:5173';
 const intervalMs = Math.max(10000, Number(process.env.MONITOR_INTERVAL_SECONDS || 60) * 1000);
