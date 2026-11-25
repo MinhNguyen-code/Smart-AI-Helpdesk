@@ -1,17 +1,39 @@
 const impacts = new Set(['individual', 'department', 'organization']);
+const negationPrefixes = ['khong bi', 'khong con', 'da het', 'chua'];
 
 export function normalizePhrase(value) {
   return String(value).normalize('NFD').replace(/\p{M}/gu, '')
     .toLowerCase().replace(/đ/g, 'd').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 }
 
+function hasUnnegatedOccurrence({ field, clauses }, keyword) {
+  if (!field.includes(` ${keyword} `)) return false;
+  // Check short clauses separately so a negation in the previous sentence cannot
+  // suppress a real incident in the next one. Retain legacy cross-clause matches.
+  let foundWithinClause = false;
+  for (const clause of clauses) {
+    const padded = ` ${clause} `;
+    let from = 0;
+    while ((from = padded.indexOf(` ${keyword} `, from)) !== -1) {
+      foundWithinClause = true;
+      const before = padded.slice(0, from).trim();
+      if (!negationPrefixes.some(prefix => before === prefix || before.endsWith(` ${prefix}`))) return true;
+      from += keyword.length + 2;
+    }
+  }
+  return !foundWithinClause;
+}
+
 export function classifyPriority({ title, description, impact }, rules) {
   if (!impacts.has(impact)) throw new Error('Invalid impact');
-  const fields = [title, description].map(value => ` ${normalizePhrase(value)} `);
+  const fields = [title, description].map(value => ({
+    field: ` ${normalizePhrase(value)} `,
+    clauses: String(value).split(/[.!?;\n]+/u).map(normalizePhrase),
+  }));
   const matches = rules.filter(rule => {
     const keyword = normalizePhrase(rule.keyword);
     return Boolean(rule.is_active) && keyword.length > 0
-      && fields.some(field => field.includes(` ${keyword} `));
+      && fields.some(field => hasUnnegatedOccurrence(field, keyword));
   }).map(rule => ({ id: rule.id, keyword: rule.keyword, priority: rule.priority }));
   const organizationImpact = impact === 'organization';
   const levels = matches.map(rule => ({ URGENT: 'P1', NORMAL: 'P3' })[rule.priority] || rule.priority).filter(level => ['P1', 'P2', 'P3', 'P4'].includes(level));
