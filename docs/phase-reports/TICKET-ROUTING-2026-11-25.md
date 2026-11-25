@@ -35,4 +35,9 @@ Local `.env`, database dev/test, reference `Diagrams/`/`Wireframe/` và `targetP
 
 ## Kết quả cuối snapshot/CI
 
-Đang kiểm chứng; sẽ cập nhật bằng run/head cụ thể, không dùng kết quả PR #2 để suy ra routing PASS.
+- Draft [PR #7](https://github.com/MinhNguyen-code/Smart-AI-Helpdesk/pull/7); prerequisite commit `9b6d55890b2c58e9735bdb42cfddd9274e71731d` tập hợp nguyên các nhóm nguồn đã xuất bản, feature commit ban đầu `7c9582cc5276f924d87e4f7b71fa09e6c338c39f`. Root branch/HEAD/index giữ nguyên.
+- Snapshot sạch `7c9582c`: backend offline **31/31** + config-only **5/5**, frontend **23/23**, production build, actionlint và diff whitespace **PASS**. Snapshot không có `.env`; không mở kết nối DB thành công.
+- CI lần đầu [45595925615](https://github.com/MinhNguyen-code/Smart-AI-Helpdesk/actions/runs/45595925615): unit/build/audit **PASS**. MySQL upgrade preservation **PASS** (6→7 migrations, dữ liệu cũ nguyên, routing null, latest lần hai no-op); integration **16 pass / 2 fail** (một assertion auto category và parent của nó). Các child RBAC/privacy, reroute/SLA, availability, concurrency và SLA recipient đều PASS; restore chưa chạy do fail ở integration. Đã sửa nguyên nhân: decision có category suy ra nhưng initialRouting chưa đưa category_id vào INSERT. Assertion không bị nới.
+- Browser UI fixtures lần đầu phát hiện auto category không được chọn khi capability đến muộn; đã remount riêng select theo capability và thêm RTL regression. Ca status dùng locator theo role/name đúng accessibility tree, vẫn assert disabled.
+- Kiểm lại sau sửa: routing RTL **9/9 PASS**; `npx.cmd playwright test --config=playwright.routing.config.js` **6/6 PASS**. API được intercept hoàn toàn, không khởi động backend/kết nối DB/Google. Đã tự xem ảnh Admin desktop/mobile và detail agent ngoài nhóm; 1440×900, 768×1024, 390×844 không tràn ngang; lưu rồi tải lại đọc lại membership, conflict giữ draft. Evidence local: `docs/screenshots/ticket-routing-2026-11-25/`. Không coi fixture browser là Google/MySQL E2E.
+- Bổ sung ca IT_AGENT tự báo sự cố không được tự nhận hoặc tự đáp ứng first-response SLA, tải xuyên nhóm và race route/reassignment. CI cuối đang chờ chạy lại sau sửa.

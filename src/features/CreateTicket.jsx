@@ -65,7 +65,7 @@ export default function CreateTicket({ categories, onSubmit, onCancel, busy, pre
           <select name="impact" defaultValue="individual"><option value="individual">Cá nhân</option><option value="department">Phòng ban</option><option value="organization">Toàn tổ chức</option></select>
         </label>
         <label>Danh mục *
-          <select name="category" required defaultValue={automaticCategory ? 'auto' : ''}><option value="" disabled>Chọn danh mục…</option>{automaticCategory && <option value="auto">Tự động phân loại</option>}{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+          <select key={automaticCategory ? 'automatic' : 'manual'} name="category" required defaultValue={automaticCategory ? 'auto' : ''}><option value="" disabled>Chọn danh mục…</option>{automaticCategory && <option value="auto">Tự động phân loại</option>}{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
           {automaticCategory && <span className="field-hint">Chọn tự động nếu chưa biết danh mục. Nội dung chưa rõ sẽ được Admin điều phối.</span>}
         </label>
       </div>

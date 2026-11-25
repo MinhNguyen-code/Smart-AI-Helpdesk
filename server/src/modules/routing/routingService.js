@@ -41,6 +41,7 @@ export async function initialRouting(trx, fields, reporterId) {
   const decision = decideUnit(fields, rows.map(row => ({ ...row, keywords: parse(row.keywords) })));
   const allocation = decision.unit_id ? await allocateAgent(trx, decision.unit_id, reporterId, settings) : { assignee_id: null, load_before: null };
   return { owner_unit_id: decision.unit_id, assignee_id: allocation.assignee_id,
+    ...(fields.category_id == null ? { category_id: decision.category_id ?? null } : {}),
     routing_status: !decision.unit_id ? 'REVIEW_REQUIRED' : allocation.assignee_id ? 'ASSIGNED' : 'TEAM_QUEUE',
     routing_evidence: JSON.stringify({ version: 1, configuration_version: settings.version, ...decision, ...allocation,
       capacity: settings.max_open_per_agent, policy: 'least_open_then_oldest_assignment' }) };

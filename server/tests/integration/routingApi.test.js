@@ -96,6 +96,11 @@ test('Routing HTTP/MySQL acceptance runs only in the isolated GitHub CI service'
       const auto = await create({ category_id: null });
       assert.equal(auto.category_id, network); assert.equal(auto.owner_unit_id, unitIds[0]);
       assert.notEqual(auto.assignee_id, paused.id);
+      const selfReport = await create({}, agentA);
+      assert.notEqual(selfReport.assignee_id, agentA.id);
+      ok(await http(agentA, 'post', `/tickets/${selfReport.id}/comments`, { message: 'CI staff reporting their own problem' }), 201);
+      assert.equal((await ticketRow(selfReport.id)).first_response_at, null);
+      assert.equal((await http(agentA, 'post', `/tickets/${selfReport.id}/comments`, { message: 'Private self note denied', visibility: 'internal' })).status, 403);
       const notifications = await db('notifications').where({ ticket_id: first.id, notification_type: 'TICKET_CREATED' });
       assert.ok(notifications.some(row => row.recipient_id === agentA.id));
       assert.ok(!notifications.some(row => [outsider.id, paused.id, inactive.id, agentB.id].includes(row.recipient_id)));
@@ -180,6 +185,21 @@ test('Routing HTTP/MySQL acceptance runs only in the isolated GitHub CI service'
       const fresh = knex(db.client.config);
       try { const row = await fresh('tickets').where('id', first.id).first();
         assert.equal(row.status, 'RESOLVED'); assert.equal(row.owner_unit_id, unitIds[1]); } finally { await fresh.destroy(); }
+    });
+
+    await t.test('Multi-team load is global and concurrent route/reassignment keeps one version winner', async () => {
+      await save(body => { body.units[1].members.push({ user_id: agentA.id, is_available: true }); });
+      const hardwareTicket = await create({ title: 'Máy in hỏng', category_id: hardware });
+      // A has no hardware ticket but does have network work; the idle hardware agent wins.
+      assert.equal(hardwareTicket.assignee_id, outsider.id);
+      const candidate = await create();
+      const other = candidate.assignee_id === agentA.id ? agentB : agentA;
+      const competing = await Promise.all([
+        http(admin, 'patch', `/tickets/${candidate.id}/assign`, { assignee_id: other.id, version: candidate.version, reason: 'CI balance workload' }),
+        http(admin, 'patch', `/tickets/${candidate.id}/routing`, { unit_id: unitIds[1], assignee_id: outsider.id, version: candidate.version, reason: 'CI specialist review' }),
+      ]);
+      assert.deepEqual(competing.map(row => row.status).sort(), [200, 409]);
+      assert.equal((await ticketRow(candidate.id)).version, candidate.version + 1);
     });
 
     await t.test('Concurrent creation honors global open load and capacity without duplicate or cross-team assignment', async () => {

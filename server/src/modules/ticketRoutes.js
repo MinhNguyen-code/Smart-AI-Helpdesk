@@ -182,7 +182,7 @@ router.post('/tickets/:id/comments', handle(async (req, res) => {
     await requireTicketAction(trx, req.user, ticket, 'reply', visibility);
     const [id] = await trx('ticket_comments').insert({ ticket_id: ticket.id, author_id: req.user.id, message: message.trim(), visibility });
     await trx('ticket_history').insert({ ticket_id: ticket.id, actor_id: req.user.id, event_type: 'COMMENT_ADDED', new_value: String(id) });
-    if (req.user.role !== 'END_USER' && !ticket.first_response_at && visibility === 'public') {
+    if (req.user.role !== 'END_USER' && (!hasRouting(ticket) || ticket.reporter_id !== req.user.id) && !ticket.first_response_at && visibility === 'public') {
       await trx('tickets').where({ id: ticket.id, first_response_at: null }).update({ first_response_at: new Date() });
     }
     const recipients = visibility === 'internal'

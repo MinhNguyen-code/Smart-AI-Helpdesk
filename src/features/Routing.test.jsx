@@ -123,3 +123,11 @@ it('submits auto classification as null category only when the capability is ena
   fireEvent.click(screen.getByRole('button', { name: 'Gửi yêu cầu' }));
   expect(send).toHaveBeenCalledWith(expect.objectContaining({ category_id: null }), null);
 });
+
+it('selects automatic classification when capabilities arrive after the creation form first renders', () => {
+  const props = { categories: [{ id: 91, name: 'Mạng' }], onSubmit: vi.fn() };
+  const { rerender } = render(<CreateTicket {...props} automaticCategory={false} />);
+  expect(screen.getByLabelText(/Danh mục/).value).toBe('');
+  rerender(<CreateTicket {...props} automaticCategory />);
+  expect(screen.getByLabelText(/Danh mục/).value).toBe('auto');
+});
