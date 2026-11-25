@@ -22,5 +22,10 @@ test('Session survives closing and reopening its database pool', async () => {
     assert.equal(restored.fixture, true);
     await promisify(store.destroy.bind(store))(id);
     assert.equal(await promisify(store.get.bind(store))(id), null);
+    const expiredId = randomUUID();
+    await promisify(store.set.bind(store))(expiredId,
+      { cookie: { expires: new Date(Date.now() - 1000) }, fixture: true });
+    assert.equal(await promisify(store.get.bind(store))(expiredId), null);
+    await promisify(store.destroy.bind(store))(expiredId);
   } finally { await second.destroy(); }
 });
