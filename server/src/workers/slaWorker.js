@@ -1,6 +1,8 @@
 import { pathToFileURL } from 'node:url';
 import { db } from '../db/index.js';
 import { createNotifications } from '../modules/notificationService.js';
+import { hasRouting } from '../modules/routing/routingPolicy.js';
+import { routingRecipients } from '../modules/routing/routingService.js';
 
 export async function runSlaCheck(database = db, afterId = 0, now = new Date()) {
   const tickets = await database('tickets').where('id', '>', afterId).orderBy('id').limit(100).select('id');
@@ -9,7 +11,8 @@ export async function runSlaCheck(database = db, afterId = 0, now = new Date()) 
     notified += await database.transaction(async trx => {
       const ticket = await trx('tickets').where('id', candidate.id).forUpdate().first();
       if (!ticket) return 0;
-      const staff = await trx('users').where({ is_active: true }).whereIn('role', ['ADMIN', 'IT_AGENT']).select('id');
+      const staff = hasRouting(ticket) ? (await routingRecipients(trx, ticket)).map(id => ({ id }))
+        : await trx('users').where({ is_active: true }).whereIn('role', ['ADMIN', 'IT_AGENT']).select('id');
       let count = 0;
       for (const [kind, deadlineField, completedField] of [
         ['response', 'response_deadline_at', 'first_response_at'],

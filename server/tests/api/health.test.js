@@ -31,6 +31,7 @@ test('System Health API Integration Tests', async (t) => {
     for (const [health, status, publicStatus] of [
       [{ connected: true, isTargetVerified: true, targetDatabase: 'private_schema', code: 'PRIVATE' }, 200, 'READY'],
       [{ connected: false, isTargetVerified: false, targetDatabase: 'private_schema', code: 'PRIVATE' }, 503, 'NOT_READY'],
+      [{ connected: true, isTargetVerified: true, routingReady: false }, 503, 'NOT_READY'],
     ]) {
       const probe = express().use('/api/v1', createSystemRouter(async () => health, { warn() {}, info() {} }));
       const res = await request(probe).get('/api/v1/ready');

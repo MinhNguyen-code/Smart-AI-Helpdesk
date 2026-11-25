@@ -9,6 +9,8 @@ import TicketDetail from './features/TicketDetail';
 import CreateTicket from './features/CreateTicket';
 import SupportVisual from './components/SupportVisual';
 import AppShell from './components/AppShell';
+import AgentAvailability from './features/AgentAvailability';
+import { routingLabels } from './features/routingModel';
 import { priorities, statuses, sampleTickets, sampleCategories } from './features/previewData';
 import { kanbanColumn, workflowRequest, workflowStatus } from './features/ticketWorkflow';
 
@@ -17,6 +19,7 @@ const RealDashboard = lazy(() => import('./features/RealDashboard'));
 const PreviewDashboard = lazy(() => import('./features/PreviewDashboard'));
 const RulesPage = lazy(() => import('./features/RulesPage'));
 const UsersPage = lazy(() => import('./features/UsersPage'));
+const RoutingPage = lazy(() => import('./features/RoutingPage'));
 
 const routeLabels = {
   '/': 'Tổng quan',
@@ -26,6 +29,7 @@ const routeLabels = {
   '/dashboard': 'Báo cáo hiệu suất',
   '/rules': 'Quy tắc & SLA',
   '/users': 'Quản trị người dùng',
+  '/routing': 'Phân tuyến & đội hỗ trợ',
 };
 
 function Dialog({ title, children, onClose, wide = false }) {
@@ -96,6 +100,8 @@ export default function App() {
   const [categories, setCategories] = useState([]);
   const [agents, setAgents] = useState([]);
   const [workflowAvailable, setWorkflowAvailable] = useState(false);
+  const [routingAvailable, setRoutingAvailable] = useState(false);
+  const [routingFilter, setRoutingFilter] = useState('all');
   const [scope, setScope] = useState('all');
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
@@ -151,7 +157,9 @@ export default function App() {
     let active = true;
     setLoadingTickets(true);
     Promise.all([
-      apiClient(scope === 'all' ? '/tickets' : '/tickets?scope=' + scope),
+      apiClient('/tickets' + (scope !== 'all' || routingFilter !== 'all' ? '?' + new URLSearchParams({
+        ...(scope !== 'all' ? { scope } : {}), ...(routingFilter !== 'all' ? { routing_status: routingFilter } : {}),
+      }) : '')),
       apiClient('/categories'),
       user.role === 'END_USER' ? Promise.resolve([]) : apiClient('/agents'),
     ])
@@ -162,12 +170,13 @@ export default function App() {
           setCategories(list);
           setAgents(staff);
           setWorkflowAvailable(data.workflow === true);
+          setRoutingAvailable(data.routing === true);
         }
       })
       .catch(failure => { if (active) setTicketsLoadError(failure.message); })
       .finally(() => { if (active) setLoadingTickets(false); });
     return () => { active = false; };
-  }, [preview, user, ticketReload, scope]);
+  }, [preview, user, ticketReload, scope, routingFilter]);
 
   async function mutate(endpoint, method, body) {
     const { csrfToken } = await apiClient('/auth/csrf');
@@ -223,11 +232,14 @@ export default function App() {
   }
 
   async function changeStatus(ticket, status) {
+    if (!preview && ticket.routing_permissions && !ticket.routing_permissions.can_handle) return;
     const next = { OPEN: 'IN_PROGRESS', IN_PROGRESS: 'RESOLVED' };
     if (next[ticket.status] !== status) {
       setError('Chỉ chuyển Mới tạo → Đang xử lý → Đã giải quyết.');
       return;
     }
+    if (!preview && ticket.routing_status) return workflowMutation(ticket,
+      () => mutate('/tickets/' + ticket.id + '/status', 'PATCH', { status, version: ticket.version }));
     await action(async () => {
       const updated = preview
         ? { ...ticket, status, version: ticket.version + 1 }
@@ -432,7 +444,11 @@ export default function App() {
             <Link className="button primary" to={url('/tickets/new')}><Plus size={16} />Tạo yêu cầu</Link>
           </header>
 
+          {!preview && user?.role === 'IT_AGENT' && <AgentAvailability mutate={mutate} />}
           <div className="toolbar">
+            {!preview && routingAvailable && user?.role !== 'END_USER' && <select aria-label="Lọc phân tuyến" value={routingFilter} onChange={event => setRoutingFilter(event.target.value)}>
+              <option value="all">Tất cả tuyến</option>{Object.entries(routingLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>}
             {!preview && workflowAvailable && user?.role !== 'END_USER' && (
               <select aria-label="Phạm vi ticket" value={scope} onChange={event => setScope(event.target.value)}>
                 <option value="all">{admin ? 'Tất cả ticket' : 'Ticket có quyền xem'}</option>
@@ -497,7 +513,7 @@ export default function App() {
                     <button
                       className={'ticket-card ' + (ticket.priority === 'P1' ? 'critical' : '')}
                       key={ticket.id}
-                      draggable={preview || (!workflowAvailable && user?.role !== 'END_USER')}
+                      draggable={preview || (!workflowAvailable && user?.role !== 'END_USER' && (!ticket.routing_permissions || ticket.routing_permissions.can_handle))}
                       onDragStart={event => event.dataTransfer.setData('text/plain', ticket.id)}
                       onClick={() => openTicket(ticket)}
                     >
@@ -507,6 +523,7 @@ export default function App() {
                       </div>
                       <h3>{ticket.title}</h3>
                       <p>{categories.find(c => c.id === ticket.category_id)?.name || 'Chưa phân loại'}</p>
+                      {ticket.routing_status && <small className="routing-summary">{ticket.owner_unit_name || 'Chưa xác định nhóm'} · {routingLabels[ticket.routing_status]}</small>}
                       {ticket.status === 'PENDING_USER' && <p>{workflowStatus[ticket.status]}</p>}
                       <footer>
                         <span className="person">
@@ -536,6 +553,7 @@ export default function App() {
           busy={busy}
           preview={preview}
           idempotent={!preview && workflowAvailable}
+          automaticCategory={!preview && routingAvailable}
           onCancel={() => navigate(url('/kanban'))}
           onSubmit={(data, file) => action(async () => {
             const ticket = preview
@@ -561,16 +579,17 @@ export default function App() {
 
       {path === '/rules' && admin && <Suspense fallback={<div className="loading" role="status">Đang tải trang quy tắc…</div>}><RulesPage preview={preview} mutate={mutate} /></Suspense>}
       {path === '/users' && admin && <Suspense fallback={<div className="loading" role="status">Đang tải trang người dùng…</div>}><UsersPage preview={preview} mutate={mutate} selfId={user?.id} /></Suspense>}
+      {path === '/routing' && admin && <Suspense fallback={<div className="loading" role="status">Đang tải phân tuyến…</div>}><RoutingPage preview={preview} mutate={mutate} /></Suspense>}
       {path === '/dashboard' && admin && <Suspense fallback={<div className="loading">Đang tải báo cáo…</div>}>{preview ? <PreviewDashboard preview /> : <RealDashboard />}</Suspense>}
-      {['/rules', '/dashboard', '/users'].includes(path) && !admin && <div className="empty" role="alert">Trang này dành cho quản trị viên.</div>}
+      {['/rules', '/dashboard', '/users', '/routing'].includes(path) && !admin && <div className="empty" role="alert">Trang này dành cho quản trị viên.</div>}
       {path === '/simulation' && <Navigate replace to={url('/kanban')} />}
-      {!['/', '/kanban', '/tickets', '/tickets/new', '/rules', '/dashboard', '/users', '/simulation'].includes(path) && (
+      {!['/', '/kanban', '/tickets', '/tickets/new', '/rules', '/dashboard', '/users', '/routing', '/simulation'].includes(path) && (
         <div className="empty"><h1>Không tìm thấy trang</h1><Link to={url('/kanban')}>Về bảng ticket</Link></div>
       )}
 
       {selected && (
         <Dialog title={'#' + selected.ticket_code + ' — ' + selected.title} wide onClose={() => setSelected(null)}>
-          {Array.isArray(selected.allowed_actions) && error && <p className="alert" role="alert">{error}</p>}
+          {(Array.isArray(selected.allowed_actions) || selected.routing_status) && error && <p className="alert" role="alert">{error}</p>}
           <TicketDetail
             key={selected.id}
             Sla={Sla}
@@ -582,6 +601,7 @@ export default function App() {
             agents={agents}
             busy={busy}
             onWorkflow={(name, fields) => workflowMutation(selected, () => mutate(...workflowRequest(name, selected, fields)))}
+            onRoute={fields => workflowMutation(selected, () => mutate('/tickets/' + selected.id + '/routing', 'PATCH', { ...fields, version: selected.version }))}
             onRefresh={async () => {
               const id = selected.id;
               const updated = await apiClient('/tickets/' + id);
@@ -590,7 +610,7 @@ export default function App() {
             }}
             action={action}
             onStatus={status => changeStatus(selected, status)}
-            onAcknowledge={() => action(async () => {
+            onAcknowledge={() => selected.routing_status ? workflowMutation(selected, () => mutate('/tickets/' + selected.id + '/acknowledge', 'POST', { version: selected.version })) : action(async () => {
               const updated = await mutate('/tickets/' + selected.id + '/acknowledge', 'POST', { version: selected.version });
               setSelected(current => ({
                 ...current,
@@ -599,13 +619,15 @@ export default function App() {
               }));
               setTickets(current => current.map(t => (t.id === updated.id ? updated : t)));
             })}
-            onReply={message => action(async () => {
+            onReply={(message, visibility = 'public') => selected.routing_status ? workflowMutation(selected,
+              () => mutate('/tickets/' + selected.id + '/comments', 'POST', { message, visibility })) : action(async () => {
               const comment = preview ? { id: Date.now(), message, author_name: 'Bạn' } : await mutate('/tickets/' + selected.id + '/comments', 'POST', { message });
               const updated = { ...selected, comments: [...(selected.comments || []), comment] };
               setSelected(updated);
               setTickets(current => current.map(t => (t.id === updated.id ? updated : t)));
             })}
-            onAssign={assigneeId => action(async () => {
+            onAssign={(assigneeId, reason) => selected.routing_status ? workflowMutation(selected,
+              () => mutate('/tickets/' + selected.id + '/assign', 'PATCH', { assignee_id: assigneeId, version: selected.version, ...(reason ? { reason } : {}) })) : action(async () => {
               const updated = await mutate('/tickets/' + selected.id + '/assign', 'PATCH', { assignee_id: assigneeId, version: selected.version });
               const detail = { ...selected, ...updated };
               setSelected(detail);

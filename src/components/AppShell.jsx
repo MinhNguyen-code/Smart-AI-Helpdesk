@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Ticket, Kanban, Clock3, Users,
-  SlidersHorizontal, BarChart3, Headphones, GraduationCap,
+  SlidersHorizontal, BarChart3, Headphones, GraduationCap, Workflow,
   ChevronLeft, ChevronRight, ChevronDown, Search, LogOut, Menu, Plus
 } from 'lucide-react';
 import NotificationMenu from '../features/NotificationMenu';
@@ -198,6 +198,9 @@ export default function AppShell({
             <>
               <div className="sidebar-section-label">{collapsed ? '•' : 'Quản trị'}</div>
               <nav aria-label="Menu quản trị">
+                <NavLink to={url('/routing')} className={path === '/routing' ? 'active' : ''} title="Phân tuyến & đội hỗ trợ">
+                  <Workflow size={18} aria-hidden="true" />{!collapsed && <span>Phân tuyến & đội hỗ trợ</span>}
+                </NavLink>
                 <NavLink
                   to={url('/rules') + '#sla'}
                   className={isSlaActive ? 'active' : ''}

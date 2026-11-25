@@ -85,7 +85,7 @@ jobs:
           docker run --rm --interactive --network "container:$MYSQL_SERVICE_ID" \
             --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
             --workdir /workspace \
-            --env CI=true --env NODE_ENV=test \
+            --env CI=true --env NODE_ENV=test --env RUN_ROUTING_DB=1 \
             --env GITHUB_ACTIONS=true --env RUNNER_ENVIRONMENT=github-hosted \
             --env DB_TEST_HOST=127.0.0.1 --env DB_TEST_PORT=3306 \
             --env DB_TEST_NAME=smart_it_helpdesk_new_test \
@@ -101,6 +101,7 @@ jobs:
           test ! -e .env
           npm ci --include=dev
           npm run db:check:test
+          node server/scripts/ciRoutingMigration.js
           npm run db:migrate:test
           # The priority migration inserts P2/P4 on an empty schema. The existing
           # seed only adds P1/P3 when the entire policy table is empty. Complete
@@ -123,7 +124,7 @@ jobs:
           } finally { await db.destroy(); }
           JS
           # Serialized files: ticket/rule fixtures temporarily edit shared SLA rows.
-          # Do not opt into unrelated, uncommitted workflow or privacy fixtures.
+          # Routing fixtures require this isolated CI job; legacy cases keep routing off.
           env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD npm run test:integration
           env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD node server/scripts/ciDatabaseEvidence.js load
           env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD node server/scripts/ciDatabaseEvidence.js prepare-backup

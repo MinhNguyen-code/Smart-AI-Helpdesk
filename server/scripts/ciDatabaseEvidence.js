@@ -45,7 +45,13 @@ async function prepareBackup(db) {
   const token = randomUUID().replaceAll('-', '');
   await db.transaction(async trx => {
     const [reporter] = await trx('users').insert({ email: `${token}@example.invalid`, full_name: 'CI backup fixture', role: 'END_USER', is_active: false });
-    const [ticket] = await trx('tickets').insert({ ticket_code: token, reporter_id: reporter, title: 'CI backup fixture', description: 'Synthetic data only', priority: 'P3' });
+    const [agent] = await trx('users').insert({ email: `agent-${token}@example.invalid`, full_name: 'CI backup agent', role: 'IT_AGENT', is_active: true });
+    const [unit] = await trx('support_units').insert({ code: `CI_BACKUP_${token.slice(0, 12)}`, name: 'CI restore group', is_active: true });
+    const [category] = await trx('categories').insert({ name: `CI backup category ${token}`, is_active: true });
+    await trx('support_unit_memberships').insert({ unit_id: unit, user_id: agent, is_available: true, last_assigned_at: new Date() });
+    await trx('category_unit_routes').insert({ category_id: category, unit_id: unit, keywords: JSON.stringify(['ci restore']) });
+    const [ticket] = await trx('tickets').insert({ ticket_code: token, reporter_id: reporter, title: 'CI backup fixture', description: 'Synthetic data only', priority: 'P3',
+      category_id: category, owner_unit_id: unit, assignee_id: agent, routing_status: 'ASSIGNED', routing_evidence: JSON.stringify({ version: 1, source: 'CI_BACKUP' }) });
     await trx('ticket_comments').insert({ ticket_id: ticket, author_id: reporter, message: 'Restore this synthetic comment', visibility: 'public' });
     await trx('ticket_history').insert({ ticket_id: ticket, actor_id: reporter, event_type: 'CREATED', new_value: 'OPEN' });
     await trx('audit_logs').insert({ actor_id: reporter, action: 'CI_BACKUP_FIXTURE', entity_type: 'ticket', entity_id: String(ticket) });

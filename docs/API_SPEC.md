@@ -91,3 +91,7 @@ Các endpoint kiểm tra vai trò và trạng thái hoạt động từ MySQL, k
 - `/health` và `/ready` được đặt trước API rate limiter để probe phản ánh trạng thái dịch vụ; readiness vẫn truy vấn MySQL.
 - `npm run session:cleanup` đếm session hết hạn sau khi xác minh schema/account đích, không xóa dữ liệu; `npm run session:cleanup -- --apply` mới dọn tối đa 5.000 session hết hạn mỗi lượt và kiểm tra lại hạn ngay trước khi xóa. Chỉ lên lịch ở môi trường đã được phê duyệt và theo dõi số còn lại.
 - Mọi kết nối Knex đặt session MySQL về UTC. Migration chỉ nhắm hai schema `smart_it_helpdesk_new_dev` và `smart_it_helpdesk_new_test` bằng tài khoản migration riêng.
+
+## 10. Phân tuyến theo nhóm — tùy chọn sau migration số 7
+
+Mặc định `TICKET_ROUTING_ENABLED=false`; chưa tự bật trên local. API cấu hình, availability, category tự động, chuyển nhóm/giao lại, version và quyền xử lý được quy định tại [TICKET_ROUTING_SPEC.md](TICKET_ROUTING_SPEC.md). `routing_status` độc lập với ba trạng thái ticket. IT_AGENT vẫn xem hàng chờ chung; ticket đã phân tuyến chỉ người được giao trong nhóm/Admin được xử lý. Ticket lịch sử null giữ hành vi MVP cho tới khi Admin chủ động chuyển tuyến.

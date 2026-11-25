@@ -20,7 +20,7 @@ export function createSystemRouter(checkHealth = checkDatabaseHealth, logger = c
   router.get('/ready', async (req, res) => {
     try {
       const health = await checkHealth();
-      const ready = health.connected === true && health.isTargetVerified === true;
+      const ready = health.connected === true && health.isTargetVerified === true && health.routingReady !== false;
       recordState(ready, health);
       res.status(ready ? 200 : 503).json({ status: ready ? 'READY' : 'NOT_READY' });
     } catch (error) {
