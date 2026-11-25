@@ -237,6 +237,7 @@ test('Routing HTTP/MySQL acceptance runs only in the isolated GitHub CI service'
       process.env.TICKET_ROUTING_ENABLED = 'false';
       assert.equal((await http(outsider, 'patch', `/tickets/${row.id}/status`, { status: 'IN_PROGRESS', version: row.version })).status, 403);
       assert.equal((await http(admin, 'get', '/routing/capabilities')).body.enabled, false);
+      assert.equal((await http(admin, 'get', `/tickets/${row.id}`)).body.routing_permissions.can_route, false);
       assert.equal((await http(admin, 'get', '/routing/settings')).status, 503);
       process.env.TICKET_ROUTING_ENABLED = 'true';
       await db('users').where('id', agentA.id).update({ is_active: false });

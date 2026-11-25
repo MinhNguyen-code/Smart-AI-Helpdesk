@@ -60,7 +60,7 @@ export async function ticketRoutingPermissions(database, user, ticket, lock = fa
     can_attach: reporter || admin || Boolean(member && ticket.assignee_id === user.id),
     can_internal: admin || Boolean(member && !reporter && ticket.assignee_id === user.id),
     can_read_internal: admin || Boolean(member && !reporter),
-    can_route: admin && ticket.status !== 'RESOLVED',
+    can_route: admin && routingEnabled() && ticket.status !== 'RESOLVED',
   };
 }
 
