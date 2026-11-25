@@ -63,4 +63,8 @@ Browser **6/6** dùng UI fixture API chặn toàn bộ request tới backend. Đ
 
 ### Còn lại trước khi dùng local
 
+Checkpoint nguồn cuối `e3f0b867098e020256f1e95b79d90c7362010c1a`: [CI 45597805113](https://github.com/MinhNguyen-code/Smart-AI-Helpdesk/actions/runs/45597805113) **PASS** hai job, gồm integration **19/19**, upgrade, restore và teardown. Bổ sung ẩn can_route của Admin khi cờ tắt; ticket đã routed vẫn giữ quyền xử lý/phân nhóm hiện hành. Các commit sau checkpoint này chỉ ghi kết quả tài liệu, không thay source đã kiểm chứng.
+
+Preflight local **chỉ đọc** sau CI: `smart_it_helpdesk_new_dev` / `sih_new_app@127.0.0.1`, đúng sáu migration MVP, hai ticket RESOLVED, cả bốn bảng routing chưa có, cờ false; có một IT_AGENT active. Không migrate/seed/cleanup/restore hay thay membership. Đã gửi chủ dự án lựa chọn bật local và nhóm của agent; khi chưa có câu trả lời không tự áp dụng DDL hoặc cấu hình nhân sự.
+
 Chủ dự án duyệt riêng thay đổi schema local đang chứa dữ liệu nghiệm thu và backup/recovery; kiểm đúng database/account trước write. Sau đó migrate số 7, bật cờ và restart API; Admin chọn thành viên thực tế cho bốn nhóm và nghiệm thu Google bằng ticket tổng hợp. Chưa có quyết định membership thật, không tự đặt agent hiện có vào mọi nhóm. Không merge PR/main trong lượt này.
