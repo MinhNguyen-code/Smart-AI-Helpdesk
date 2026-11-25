@@ -1,36 +1,35 @@
 import { Router } from 'express';
 import { checkDatabaseHealth } from '../../db/index.js';
 
-const router = Router();
-const serverStartTime = Date.now();
-
-/**
- * Liveness Probe: Returns 200 if the Node.js/Express process is running.
- */
-router.get('/health', (req, res) => {
-  const uptimeSeconds = Math.round((Date.now() - serverStartTime) / 1000);
-  res.status(200).json({
-    status: 'UP',
-    timestamp: new Date().toISOString(),
-    uptimeSeconds,
-    nodeVersion: process.version,
-  });
-});
-
-/**
- * Readiness Probe: Checks MySQL connection and returns system readiness.
- */
-router.get('/ready', async (req, res) => {
-  const dbHealth = await checkDatabaseHealth();
-  const isReady = dbHealth.connected && dbHealth.isTargetVerified;
-
-  const payload = {
-    status: isReady ? 'READY' : 'NOT_READY',
-    database: dbHealth,
-    timestamp: new Date().toISOString(),
+export function createSystemRouter(checkHealth = checkDatabaseHealth, logger = console) {
+  const router = Router();
+  let lastReady;
+  const recordState = (ready, health = {}) => {
+    if (!ready && lastReady !== false) {
+      const code = /^[A-Z0-9_]{1,64}$/.test(health.code || '') ? health.code : 'UNAVAILABLE';
+      logger.warn(JSON.stringify({ event: 'readiness_failed', connected: health.connected === true,
+        targetVerified: health.isTargetVerified === true, code }));
+    } else if (ready && lastReady === false) {
+      logger.info(JSON.stringify({ event: 'readiness_recovered' }));
+    }
+    lastReady = ready;
   };
 
-  res.status(isReady ? 200 : 503).json(payload);
-});
+  // Public probes disclose only status, while readiness still checks real MySQL.
+  router.get('/health', (req, res) => res.status(200).json({ status: 'UP' }));
+  router.get('/ready', async (req, res) => {
+    try {
+      const health = await checkHealth();
+      const ready = health.connected === true && health.isTargetVerified === true;
+      recordState(ready, health);
+      res.status(ready ? 200 : 503).json({ status: ready ? 'READY' : 'NOT_READY' });
+    } catch (error) {
+      recordState(false, { code: error?.code });
+      res.status(503).json({ status: 'NOT_READY' });
+    }
+  });
 
-export default router;
+  return router;
+}
+
+export default createSystemRouter();

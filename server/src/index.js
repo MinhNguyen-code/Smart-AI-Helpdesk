@@ -1,8 +1,14 @@
 import app from './app.js';
 import config from './config/index.js';
 import { db, checkDatabaseHealth } from './db/index.js';
+import { startSlaWorker } from './workers/slaWorker.js';
 
-const server = app.listen(config.port, async () => {
+let slaWorker;
+let startupCheck;
+let stopping = false;
+
+const server = app.listen(config.port, () => {
+  if (stopping) return;
   console.log(`====================================================`);
   console.log(`🚀 Smart IT Helpdesk Server started on port ${config.port}`);
   console.log(`📡 Environment: ${config.nodeEnv}`);
@@ -10,7 +16,14 @@ const server = app.listen(config.port, async () => {
   console.log(`🌐 Client Origin: ${config.clientUrl}`);
   console.log(`====================================================`);
 
-  // Check database health on startup
+  if (process.argv.includes('--with-sla-worker')) {
+    slaWorker = startSlaWorker();
+    console.log('SLA worker started.');
+  }
+  startupCheck = logDatabaseHealth();
+});
+
+async function logDatabaseHealth() {
   const dbHealth = await checkDatabaseHealth();
   if (dbHealth.connected) {
     console.log(`✅ MySQL connected: Database '${dbHealth.targetDatabase}' (Latency: ${dbHealth.latencyMs}ms)`);
@@ -18,27 +31,29 @@ const server = app.listen(config.port, async () => {
     console.warn(`⚠️ MySQL is NOT currently connected: ${dbHealth.error}`);
     console.warn(`💡 Note: Database-dependent endpoints will return 503 until MySQL is available.`);
   }
-});
+}
 
 // Graceful shutdown handling
-function handleShutdown(signal) {
+async function handleShutdown(signal) {
+  if (stopping) return;
+  stopping = true;
   console.log(`\nReceived ${signal}. Shutting down gracefully...`);
-  server.close(async () => {
-    console.log('HTTP server closed.');
-    try {
-      await db.destroy();
-      console.log('Database connection pool destroyed.');
-    } catch (err) {
-      console.error('Error closing database pool:', err.message);
-    }
-    process.exit(0);
-  });
-
-  // Force shutdown after timeout
-  setTimeout(() => {
+  const timeout = setTimeout(() => {
     console.error('Forced shutdown due to timeout.');
     process.exit(1);
   }, 10000);
+
+  try {
+    const httpClosed = new Promise(resolve => server.close(() => resolve()));
+    await Promise.all([httpClosed, slaWorker?.stop(), startupCheck]);
+    await db.destroy();
+    console.log('HTTP server and database connection pool closed.');
+  } catch (error) {
+    console.error('Shutdown failed:', error.code || 'SHUTDOWN_FAILURE');
+    process.exitCode = 1;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 process.on('SIGTERM', () => handleShutdown('SIGTERM'));
