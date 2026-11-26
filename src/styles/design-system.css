@@ -74,7 +74,9 @@ hr { border: 0; border-top: 1px solid var(--border-hairline); margin: 20px 0; }
   padding: 8px 14px; background: var(--accent-obsidian); color: #fff;
   border-radius: var(--radius-sm); font-size: 13px; font-weight: 500;
 }
-.skip-link:focus { top: 12px; }
+.skip-link:focus { top: 72px; }
+
+.ticket-pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 16px 0; flex-wrap: wrap; }
 
 h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.025em; color: var(--ink-primary); }
 h2 { font-size: 17px; font-weight: 600; letter-spacing: -0.02em; color: var(--ink-primary); }

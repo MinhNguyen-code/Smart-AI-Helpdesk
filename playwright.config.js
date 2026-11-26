@@ -2,10 +2,14 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir: './e2e',
-  testIgnore: ['live-api.spec.js', 'production-guard.spec.js', 'production-benchmark.spec.js', 'production-states.spec.js'],
+  testMatch: ['wireframe.spec.js', 'design-review.spec.js', 'private-files.spec.js'],
   timeout: 30000,
   retries: 0,
   reporter: 'list',
-  use: { baseURL: 'http://localhost:5173', browserName: 'chromium', channel: 'msedge' },
-  webServer: { command: 'npm.cmd run dev', url: 'http://localhost:5173/login', reuseExistingServer: true, timeout: 30000 },
+  workers: 2,
+  use: { baseURL: 'http://127.0.0.1:5187', browserName: 'chromium',
+    channel: process.platform === 'win32' ? 'msedge' : undefined },
+  webServer: { command: 'node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5187 --strictPort',
+    url: 'http://127.0.0.1:5187/login', reuseExistingServer: false, timeout: 30000,
+    env: { VITE_API_BASE_URL: '/api/v1' } },
 });

@@ -14,7 +14,7 @@ it.each([429, 503])('offers session recovery instead of a false logout after HTT
       if (sessionRequests === 1) throw Object.assign(new Error('Temporary API failure'), { status });
       return { user: { id: 3, role: 'END_USER', full_name: 'Acceptance reporter' } };
     }
-    if (endpoint === '/tickets') return { items: [], total: 0 };
+    if (endpoint.split('?')[0] === '/tickets') return { items: [], total: 0 };
     if (endpoint === '/categories') return [];
     if (endpoint.startsWith('/notifications')) return { items: [], unreadCount: 0 };
     throw new Error(`Unexpected request: ${endpoint}`);

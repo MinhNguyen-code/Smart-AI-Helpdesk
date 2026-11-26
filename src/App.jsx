@@ -94,6 +94,8 @@ export default function App() {
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const [tickets, setTickets] = useState([]);
   const [totalTickets, setTotalTickets] = useState(0);
+  const [ticketPage, setTicketPage] = useState(1);
+  const [ticketPageSize, setTicketPageSize] = useState(30);
   const [loadingTickets, setLoadingTickets] = useState(false);
   const [ticketsLoadError, setTicketsLoadError] = useState('');
   const [ticketReload, setTicketReload] = useState(0);
@@ -105,6 +107,7 @@ export default function App() {
   const [scope, setScope] = useState('all');
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
+  const [querySearch, setQuerySearch] = useState('');
   const [sort, setSort] = useState('sla');
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [error, setError] = useState('');
@@ -113,6 +116,7 @@ export default function App() {
   const [menu, setMenu] = useState(false);
 
   const path = location.pathname;
+  const listScreen = ['/kanban', '/tickets'].includes(path);
   const url = value => value + (preview ? '?preview=1' : '');
   const admin = preview || user?.role === 'ADMIN';
 
@@ -134,17 +138,31 @@ export default function App() {
   }, [sessionAttempt]);
 
   useEffect(() => {
-    setSearch('');
     setPriorityFilter('all');
+    setTicketPage(1);
     setError('');
     setMenu(false);
   }, [path]);
 
   useEffect(() => {
+    const timer = setTimeout(() => setQuerySearch(search.trim()), 250);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  function changeSearch(value) {
+    setSearch(value);
+    setTicketPage(1);
+  }
+
+  useEffect(() => {
+    if (!preview) return;
+    setTickets(sampleTickets);
+    setTotalTickets(sampleTickets.length);
+    setCategories(sampleCategories);
+  }, [preview]);
+
+  useEffect(() => {
     if (preview) {
-      setTickets(sampleTickets);
-      setTotalTickets(sampleTickets.length);
-      setCategories(sampleCategories);
       setLoadingTickets(false);
       setTicketsLoadError('');
       return;
@@ -156,17 +174,26 @@ export default function App() {
     if (!user) { setLoadingTickets(false); return; }
     let active = true;
     setLoadingTickets(true);
+    const params = new URLSearchParams(listScreen ? {
+      page: String(ticketPage), sort,
+      ...(querySearch ? { search: querySearch } : {}),
+      ...(priorityFilter !== 'all' ? { priority: priorityFilter } : {}),
+      ...(scope !== 'all' ? { scope } : {}),
+      ...(routingFilter !== 'all' ? { routing_status: routingFilter } : {}),
+    } : {});
     Promise.all([
-      apiClient('/tickets' + (scope !== 'all' || routingFilter !== 'all' ? '?' + new URLSearchParams({
-        ...(scope !== 'all' ? { scope } : {}), ...(routingFilter !== 'all' ? { routing_status: routingFilter } : {}),
-      }) : '')),
+      apiClient('/tickets' + (params.size ? '?' + params : '')),
       apiClient('/categories'),
       user.role === 'END_USER' ? Promise.resolve([]) : apiClient('/agents'),
     ])
       .then(([data, list, staff]) => {
         if (active) {
           setTickets(data.items);
-          setTotalTickets(Number.isFinite(data.total) ? data.total : data.items.length);
+          const total = Number.isFinite(data.total) ? data.total : data.items.length;
+          const pageSize = Number.isSafeInteger(data.pageSize) && data.pageSize > 0 ? data.pageSize : 30;
+          setTotalTickets(total);
+          setTicketPageSize(pageSize);
+          if (listScreen && ticketPage > Math.max(1, Math.ceil(total / pageSize))) setTicketPage(Math.max(1, Math.ceil(total / pageSize)));
           setCategories(list);
           setAgents(staff);
           setWorkflowAvailable(data.workflow === true);
@@ -176,7 +203,7 @@ export default function App() {
       .catch(failure => { if (active) setTicketsLoadError(failure.message); })
       .finally(() => { if (active) setLoadingTickets(false); });
     return () => { active = false; };
-  }, [preview, user, ticketReload, scope, routingFilter]);
+  }, [preview, user, ticketReload, scope, routingFilter, listScreen, ticketPage, querySearch, priorityFilter, sort]);
 
   async function mutate(endpoint, method, body) {
     const { csrfToken } = await apiClient('/auth/csrf');
@@ -372,13 +399,14 @@ export default function App() {
     );
   }
 
-  const visibleTickets = tickets
+  const visibleTickets = preview ? [...tickets]
     .filter(ticket => (priorityFilter === 'all' || ticket.priority === priorityFilter)
       && (ticket.title + ' ' + ticket.ticket_code).toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => {
       if (sort === 'sla') return (Date.parse(a.resolution_deadline_at) || Infinity) - (Date.parse(b.resolution_deadline_at) || Infinity);
       return sort === 'priority' ? a.priority.localeCompare(b.priority) : b.id - a.id;
-    });
+    }) : tickets;
+  const ticketPages = Math.max(1, Math.ceil(totalTickets / ticketPageSize));
 
   return (
     <AppShell
@@ -389,7 +417,7 @@ export default function App() {
       routeLabels={routeLabels}
       url={url}
       search={search}
-      onSearchChange={setSearch}
+      onSearchChange={changeSearch}
       menu={menu}
       setMenu={setMenu}
       mutate={mutate}
@@ -446,11 +474,11 @@ export default function App() {
 
           {!preview && user?.role === 'IT_AGENT' && <AgentAvailability mutate={mutate} />}
           <div className="toolbar">
-            {!preview && routingAvailable && user?.role !== 'END_USER' && <select aria-label="Lọc phân tuyến" value={routingFilter} onChange={event => setRoutingFilter(event.target.value)}>
+            {!preview && routingAvailable && user?.role !== 'END_USER' && <select aria-label="Lọc phân tuyến" value={routingFilter} onChange={event => { setRoutingFilter(event.target.value); setTicketPage(1); }}>
               <option value="all">Tất cả tuyến</option>{Object.entries(routingLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>}
             {!preview && workflowAvailable && user?.role !== 'END_USER' && (
-              <select aria-label="Phạm vi ticket" value={scope} onChange={event => setScope(event.target.value)}>
+              <select aria-label="Phạm vi ticket" value={scope} onChange={event => { setScope(event.target.value); setTicketPage(1); }}>
                 <option value="all">{admin ? 'Tất cả ticket' : 'Ticket có quyền xem'}</option>
                 <option value="unassigned">Chưa phân công</option>
                 {!admin && <option value="mine">Ticket tôi phụ trách</option>}
@@ -463,20 +491,22 @@ export default function App() {
                 aria-label="Tìm ticket"
                 placeholder="Tìm theo mã ticket hoặc tiêu đề…"
                 value={search}
-                onChange={event => setSearch(event.target.value)}
+                onChange={event => changeSearch(event.target.value)}
+                maxLength={200}
               />
             </div>
-            <select aria-label="Lọc mức độ ưu tiên" value={priorityFilter} onChange={event => setPriorityFilter(event.target.value)}>
+            <select aria-label="Lọc mức độ ưu tiên" value={priorityFilter} onChange={event => { setPriorityFilter(event.target.value); setTicketPage(1); }}>
               <option value="all">Tất cả ưu tiên</option>
               {Object.entries(priorities).map(([key, label]) => <option key={key} value={key}>{key} · {label}</option>)}
             </select>
-            <select aria-label="Sắp xếp ticket" value={sort} onChange={event => setSort(event.target.value)}>
+            <select aria-label="Sắp xếp ticket" value={sort} onChange={event => { setSort(event.target.value); setTicketPage(1); }}>
               <option value="sla">SLA gần nhất</option>
               <option value="priority">Mức độ ưu tiên</option>
               <option value="newest">Mới nhất trước</option>
             </select>
             <span className="muted">
-              {loadingTickets ? 'Đang tải…' : ticketsLoadError ? 'Lỗi tải dữ liệu' : visibleTickets.length + ' ticket'}
+              {loadingTickets ? 'Đang tải…' : ticketsLoadError ? 'Lỗi tải dữ liệu' : preview ? visibleTickets.length + ' ticket'
+                : `Hiển thị ${visibleTickets.length}/${totalTickets} ticket`}
             </span>
           </div>
 
@@ -540,6 +570,13 @@ export default function App() {
             )}
           </div>
 
+          {!preview && <nav className="ticket-pagination" aria-label="Phân trang ticket">
+            <button type="button" className="button secondary" disabled={loadingTickets || Boolean(ticketsLoadError) || ticketPage <= 1}
+              onClick={() => setTicketPage(page => page - 1)}>Trang trước</button>
+            <span aria-live="polite">Trang {ticketPage}/{ticketPages}</span>
+            <button type="button" className="button secondary" disabled={loadingTickets || Boolean(ticketsLoadError) || ticketPage >= ticketPages}
+              onClick={() => setTicketPage(page => page + 1)}>Trang tiếp</button>
+          </nav>}
           <div className="board-footer">
             <span><span className="red-dot" />Dải đỏ: P1 · Khẩn cấp</span>
             <span>{!preview && workflowAvailable ? 'Mở ticket để xem và cập nhật trạng thái' : 'Kéo thẻ hoặc nhấn để xem chi tiết & cập nhật trạng thái'}</span>

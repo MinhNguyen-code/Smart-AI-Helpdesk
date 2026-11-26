@@ -25,7 +25,7 @@ it('shows the persisted image and history immediately after creating a three-sta
   let uploaded = false;
   apiClient.mockImplementation(async (endpoint, options) => {
     if (endpoint === '/auth/me') return { user: { id: 3, role: 'END_USER', full_name: 'Reporter' } };
-    if (endpoint === '/tickets' && !options?.method) return { items: [], total: 0 };
+    if (endpoint.split('?')[0] === '/tickets' && !options?.method) return { items: [], total: 0 };
     if (endpoint === '/categories') return [{ id: 3, name: 'LMS' }];
     if (endpoint === '/auth/csrf') return { csrfToken: 'test-only-csrf' };
     if (endpoint.startsWith('/notifications')) return { items: [], unreadCount: 0 };

@@ -20,6 +20,16 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    fs: {
+      strict: true,
+      // The repository also contains backend data and private backups.
+      // Serve only frontend entry points, source, public assets and dependencies.
+      allow: ['index.html', 'src', 'public', 'node_modules'].map(entry => path.resolve(__dirname, entry)),
+      // A custom deny list replaces Vite defaults: retain them and protect
+      // backend/work files even if a frontend module accidentally imports one.
+      deny: ['.env', '.env.*', '*.{crt,pem,key,p12,pfx,cer,der}', '.npmrc', '.yarnrc.yml',
+        '**/.git/**', '**/server/**', '**/work/**', '**/.ci-evidence/**'],
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:5000',

@@ -298,6 +298,7 @@ export default function AppShell({
                 type="search"
                 aria-label="Tìm nhanh mã ticket hoặc tiêu đề"
                 placeholder="Tìm mã hoặc tiêu đề ticket…"
+                maxLength={200}
                 value={search}
                 onChange={event => onSearchChange(event.target.value)}
               />

@@ -31,6 +31,7 @@
     "test:integration": "node --test --test-concurrency=1 server/tests/integration/*.test.js",
     "test:frontend": "vitest run",
     "test:browser": "playwright test",
+    "test:browser:routing": "playwright test --config=playwright.routing.config.js",
     "test:browser:api": "playwright test --config=playwright.live.config.js",
     "test:browser:production": "playwright test --config=playwright.production.config.js"
   },

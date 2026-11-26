@@ -7,6 +7,7 @@ import config from '../config/index.js';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 import { classifyPriority, calculateDeadlines, assertStatusTransition } from './ticketPolicy.js';
+import { ticketListOptions, filterTicketList, sortTicketList } from './ticketListQuery.js';
 import { createNotifications } from './notificationService.js';
 import { hasRouting, routingEnabled, routingError } from './routing/routingPolicy.js';
 import { allocateAgent, initialRouting, lockRouting, presentRouting, requireTicketAction, routingRecipients,
@@ -48,10 +49,9 @@ router.get('/agents', handle(async (req, res) => {
   res.json(await db('users').where({ role: 'IT_AGENT', is_active: true }).select('id', 'full_name').orderBy('full_name'));
 }));
 router.get('/tickets', handle(async (req, res) => {
-  const page = Number(req.query.page || 1);
-  if (!Number.isSafeInteger(page) || page < 1) fail(400, 'Invalid page');
-  const query = ticketQuery(db, req.user);
-  if (req.query.search) query.where(builder => builder.where('title', 'like', `%${String(req.query.search).slice(0, 200)}%`).orWhere('ticket_code', req.query.search));
+  const options = ticketListOptions(req.query);
+  const { page } = options;
+  const query = filterTicketList(ticketQuery(db, req.user), options);
   if (req.query.status) {
     if (!['OPEN', 'IN_PROGRESS', 'RESOLVED'].includes(req.query.status)) fail(400, 'Invalid status');
     query.where('status', req.query.status);
@@ -61,7 +61,7 @@ router.get('/tickets', handle(async (req, res) => {
     query.where('routing_status', req.query.routing_status);
   }
   const [{ count }] = await query.clone().count('* as count');
-  const items = await query.orderBy('id', 'desc').limit(30).offset((page - 1) * 30);
+  const items = await sortTicketList(query, options.sort).limit(30).offset((page - 1) * 30);
   const reporters = await db('users').whereIn('id', [...new Set(items.map(item => item.reporter_id))]).select('id', 'full_name');
   const names = new Map(reporters.map(user => [user.id, user.full_name]));
   res.json({ items: await Promise.all(items.map(item => presentRouting(db, req.user, { ...item, reporter_name: names.get(item.reporter_id) }))),

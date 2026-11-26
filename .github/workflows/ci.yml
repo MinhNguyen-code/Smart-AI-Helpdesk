@@ -31,6 +31,39 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=high
 
+  browser-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_API_BASE_URL: /api/v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Require a clean checkout without local environment files
+        run: test ! -e .env
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Preview, keyboard and private-file regression (synthetic API only)
+        run: npm run test:browser -- --output=test-results/preview
+      - name: Routing UI contracts (synthetic API only)
+        run: npm run test:browser:routing -- --output=test-results/routing
+      - name: Build production frontend
+        run: npm run build
+      - name: Production guard, states and pagination (synthetic API only)
+        run: npm run test:browser:production -- --output=test-results/production
+      - name: Retain browser failure context
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-regression-evidence
+          path: test-results/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
+
   mysql-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -103,26 +136,8 @@ jobs:
           npm run db:check:test
           node server/scripts/ciRoutingMigration.js
           npm run db:migrate:test
-          # The priority migration inserts P2/P4 on an empty schema. The existing
-          # seed only adds P1/P3 when the entire policy table is empty. Complete
-          # these reference rows here without changing production seed behavior.
-          env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD node --input-type=module <<'JS'
-          import knex from 'knex';
-          import { createDatabaseConfig, validateDatabaseConfig } from './knexfile.js';
-          import { assertIdentity } from './server/src/db/targetPolicy.js';
-          const configuration = createDatabaseConfig('test');
-          validateDatabaseConfig('test', 'runtime', configuration);
-          const db = knex(configuration);
-          try {
-            const [rows] = await db.raw('SELECT DATABASE() AS selected_database, CURRENT_USER() AS matched_account');
-            assertIdentity('test', 'runtime', rows[0]);
-            await db('sla_policies').insert([
-              { priority: 'P1', response_minutes: 15, resolution_minutes: 120, is_active: true },
-              { priority: 'P3', response_minutes: 240, resolution_minutes: 1440, is_active: true },
-            ]);
-            await db.seed.run();
-          } finally { await db.destroy(); }
-          JS
+          # Exercise the documented fresh-install seed, without CI-only SLA repair.
+          env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD node server/scripts/databaseCommand.js seed test
           # Serialized files: ticket/rule fixtures temporarily edit shared SLA rows.
           # Routing fixtures require this isolated CI job; legacy cases keep routing off.
           env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD npm run test:integration
