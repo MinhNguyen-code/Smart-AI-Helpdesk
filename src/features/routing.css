@@ -18,5 +18,15 @@
 .routing-controls summary { cursor: pointer; font-weight: 600; }
 .routing-controls form { margin-top: 14px; }
 .routing-summary { display: block; font-weight: 500; overflow-wrap: anywhere; }
+.ticket-queues { margin: 0 24px 18px; }
+.ticket-queues nav { display: flex; flex-wrap: wrap; gap: 8px; }
+.ticket-queues button { min-height: 40px; transition: background-color .15s, border-color .15s; }
+.ticket-queues button[aria-pressed="true"] { background: var(--accent-indigo-soft, #eef2ff); border-color: var(--accent-indigo, #4f46e5); color: var(--accent-indigo, #4f46e5); }
+.ticket-queues p { margin: 10px 0 0; color: var(--ink-secondary, #64748b); font-size: 13px; }
+.queue-count { padding: 1px 7px; border-radius: 16px; background: var(--bg-subtle, #f1f5f9); }
+.ticket-routing-info { display: grid; gap: 5px; margin: 10px 0; font-size: 12px; overflow-wrap: anywhere; }
+.ticket-routing-info small { color: var(--ink-secondary, #64748b); }
+.sla-queue-warning { display: inline-block; padding: 3px 7px; border-radius: 6px; background: #fff7ed; color: #9a3412; font-weight: 600; }
+@media (max-width: 768px) { .ticket-queues { margin: 0 16px 18px; } }
 @media (max-width: 950px) { .routing-units, .routing-route { grid-template-columns: 1fr; } }
 @media (max-width: 768px) { .routing-page { margin: 0 16px 24px; } .routing-availability { margin: 0 16px 18px; } }

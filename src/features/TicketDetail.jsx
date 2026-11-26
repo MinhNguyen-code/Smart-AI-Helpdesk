@@ -5,7 +5,7 @@ import TicketWorkflowActions from './TicketWorkflowActions';
 import { kanbanColumn, workflowStatus } from './ticketWorkflow';
 import TicketProgress from './TicketProgress';
 import TicketRoutingControls from './TicketRoutingControls';
-import { routingLabels } from './routingModel';
+import TicketRoutingInfo from './TicketRoutingInfo';
 
 const base = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const impacts = { individual: 'Cá nhân', department: 'Phòng ban', organization: 'Toàn tổ chức' };
@@ -94,7 +94,7 @@ export default function TicketDetail({ ticket, preview, user, categories, agents
     </form>}
     <hr /><h3>Nhật ký ticket</h3><div className="history">{ticket.history?.length ? ticket.history.map(item => <p key={item.id}><strong>{events[item.event_type] || item.event_type}</strong><span>{item.new_value || ''}{(workflow || routing?.can_read_internal) && item.note ? ` · ${item.note}` : ''}</span><small>{new Date(item.created_at).toLocaleString('vi-VN')}</small></p>) : <p className="muted">Chưa có sự kiện nào.</p>}</div>
   </section><aside>
-    {ticket.routing_status && <div className="detail-field"><strong>Nhóm phụ trách</strong><span>{ticket.owner_unit_name || 'Chưa xác định nhóm'}</span><small>{routingLabels[ticket.routing_status]}</small></div>}
+    <TicketRoutingInfo ticket={ticket} />
     {(routing?.can_route || ticket.can_route_legacy) && <TicketRoutingControls ticket={ticket} busy={busy} onRoute={onRoute} />}
     <div className={`sla-box ${ticket.priority === 'P1' ? 'danger' : ''}`}><Clock3 size={19} /><strong>THỜI HẠN SLA</strong><Sla ticket={ticket} /><small>Theo dõi thời gian xử lý cam kết.</small></div>
     <div className="detail-field"><strong>Tiếp nhận (ACK)</strong><span>{ticket.acknowledged_at ? new Date(ticket.acknowledged_at).toLocaleString('vi-VN') : 'Chưa tiếp nhận'}</span>{!workflow && handleStaff && !preview && !ticket.acknowledged_at && ticket.status !== 'RESOLVED' && <button type="button" className="button secondary" disabled={busy} onClick={onAcknowledge}>Xác nhận tiếp nhận</button>}</div>

@@ -116,6 +116,27 @@ test('Routing HTTP/MySQL acceptance runs only in the isolated GitHub CI service'
       assert.equal((await http(admin, 'get', '/tickets?routing_status=REVIEW_REQUIRED')).body.items.filter(row => tickets.includes(row.id)).length, 4);
     });
 
+    await t.test('Agent queues scope open work to self/team and explain assignment without disclosing internal workload to outsiders', async () => {
+      const own = ok(await http(agentA, 'get', '/tickets?scope=mine'));
+      assert.ok(own.items.length); assert.ok(own.items.every(row => row.assignee_id === agentA.id && row.status !== 'RESOLVED'));
+      assert.ok(own.items[0].assignee_name); assert.equal(typeof own.items[0].assignee_open_count, 'number');
+      assert.equal(own.items[0].routing_explanation.auto_assigned, true);
+      const team = ok(await http(agentA, 'get', '/tickets?scope=team'));
+      assert.ok(team.items.some(row => row.assignee_id === agentB.id));
+      assert.ok(team.items.every(row => row.owner_unit_id === unitIds[0]));
+      assert.equal(ok(await http(outsider, 'get', '/tickets?scope=team')).items.length, 0);
+      const reviews = ok(await http(admin, 'get', '/tickets?scope=review'));
+      assert.equal(reviews.total, 4); assert.equal(reviews.queueCounts.review, 4);
+      assert.ok(reviews.items.every(row => row.routing_status === 'REVIEW_REQUIRED'));
+      assert.equal((await http(reporter, 'get', '/tickets?scope=mine')).status, 403);
+      const publicQueue = ok(await http(outsider, 'get', '/tickets'));
+      assert.ok(publicQueue.items.some(row => row.id === first.id));
+      const publicTicket = publicQueue.items.find(row => row.id === first.id);
+      assert.equal(publicTicket.assignee_open_count, undefined); assert.equal(publicTicket.routing_explanation, undefined);
+      const availability = ok(await http(agentA, 'get', '/routing/me'));
+      assert.equal(availability.open_count, own.total); assert.equal(availability.capacity, 8);
+    });
+
     await t.test('Shared queue permits public reading but blocks out-of-team processing and private history', async () => {
       const internal = ok(await http(agentA, 'post', `/tickets/${first.id}/comments`, { message: 'CI private network note', visibility: 'internal' }), 201);
       const publicReply = ok(await http(agentA, 'post', `/tickets/${first.id}/comments`, { message: 'CI public response' }), 201);

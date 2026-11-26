@@ -10,6 +10,8 @@ import CreateTicket from './features/CreateTicket';
 import SupportVisual from './components/SupportVisual';
 import AppShell from './components/AppShell';
 import AgentAvailability from './features/AgentAvailability';
+import TicketQueueNav from './features/TicketQueueNav';
+import TicketRoutingInfo from './features/TicketRoutingInfo';
 import { routingLabels } from './features/routingModel';
 import { priorities, statuses, sampleTickets, sampleCategories } from './features/previewData';
 import { kanbanColumn, workflowRequest, workflowStatus } from './features/ticketWorkflow';
@@ -105,6 +107,7 @@ export default function App() {
   const [routingAvailable, setRoutingAvailable] = useState(false);
   const [routingFilter, setRoutingFilter] = useState('all');
   const [scope, setScope] = useState('all');
+  const [queueCounts, setQueueCounts] = useState({});
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState('');
   const [querySearch, setQuerySearch] = useState('');
@@ -198,6 +201,8 @@ export default function App() {
           setAgents(staff);
           setWorkflowAvailable(data.workflow === true);
           setRoutingAvailable(data.routing === true);
+          setQueueCounts(data.queueCounts || {});
+          if (!data.routing && ['team', 'review'].includes(scope)) setScope('all');
         }
       })
       .catch(failure => { if (active) setTicketsLoadError(failure.message); })
@@ -473,17 +478,12 @@ export default function App() {
           </header>
 
           {!preview && user?.role === 'IT_AGENT' && <AgentAvailability mutate={mutate} />}
+          {!preview && ['ADMIN', 'IT_AGENT'].includes(user?.role) && <TicketQueueNav role={user.role} routing={routingAvailable}
+            scope={scope} counts={queueCounts} onChange={value => { setScope(value); setTicketPage(1); }} />}
           <div className="toolbar">
             {!preview && routingAvailable && user?.role !== 'END_USER' && <select aria-label="Lọc phân tuyến" value={routingFilter} onChange={event => { setRoutingFilter(event.target.value); setTicketPage(1); }}>
               <option value="all">Tất cả tuyến</option>{Object.entries(routingLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </select>}
-            {!preview && workflowAvailable && user?.role !== 'END_USER' && (
-              <select aria-label="Phạm vi ticket" value={scope} onChange={event => { setScope(event.target.value); setTicketPage(1); }}>
-                <option value="all">{admin ? 'Tất cả ticket' : 'Ticket có quyền xem'}</option>
-                <option value="unassigned">Chưa phân công</option>
-                {!admin && <option value="mine">Ticket tôi phụ trách</option>}
-              </select>
-            )}
             {!preview && workflowAvailable && user?.role === 'END_USER' && <strong>Yêu cầu của tôi</strong>}
             <div className="search">
               <Search size={16} />
@@ -552,8 +552,10 @@ export default function App() {
                         <Badge priority={ticket.priority} />
                       </div>
                       <h3>{ticket.title}</h3>
+                      {!['RESOLVED', 'CLOSED'].includes(ticket.status) && Date.parse(ticket.resolution_deadline_at) > Date.now()
+                        && Date.parse(ticket.resolution_deadline_at) <= Date.now() + 15 * 60000 && <small className="sla-queue-warning">Sắp hết SLA</small>}
                       <p>{categories.find(c => c.id === ticket.category_id)?.name || 'Chưa phân loại'}</p>
-                      {ticket.routing_status && <small className="routing-summary">{ticket.owner_unit_name || 'Chưa xác định nhóm'} · {routingLabels[ticket.routing_status]}</small>}
+                      <TicketRoutingInfo ticket={ticket} />
                       {ticket.status === 'PENDING_USER' && <p>{workflowStatus[ticket.status]}</p>}
                       <footer>
                         <span className="person">

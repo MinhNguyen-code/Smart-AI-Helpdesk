@@ -86,12 +86,23 @@ export async function routingRecipients(database, ticket) {
   return [...new Set([...admins, ...agents])].filter(id => id !== ticket.reporter_id);
 }
 
-export async function presentRouting(database, user, ticket) {
+export async function presentRouting(database, user, ticket, loads) {
   const permissions = await ticketRoutingPermissions(database, user, ticket);
   if (!permissions) return routingEnabled() && user.role === 'ADMIN' && ticket.status !== 'RESOLVED'
     ? { ...ticket, can_route_legacy: true } : ticket;
   const unit = ticket.owner_unit_id && await database('support_units').where('id', ticket.owner_unit_id).select('name', 'code').first();
   const result = { ...ticket, owner_unit_name: unit?.name || null, owner_unit_code: unit?.code || null, routing_permissions: permissions };
+  if (permissions.can_read_internal) {
+    let evidence;
+    try { evidence = parse(ticket.routing_evidence) || {}; } catch { evidence = {}; }
+    result.routing_explanation = { reason: evidence.reason || null, source: evidence.source || null,
+      auto_assigned: evidence.policy === 'least_open_then_oldest_assignment', load_before: evidence.load_before ?? null, capacity: evidence.capacity ?? null };
+    if (ticket.assignee_id) {
+      result.assignee_name ||= (await database('users').where('id', ticket.assignee_id).select('full_name').first())?.full_name;
+      result.assignee_open_count = loads ? loads.get(ticket.assignee_id) || 0
+        : Number((await database('tickets').where('assignee_id', ticket.assignee_id).whereIn('status', ['OPEN', 'IN_PROGRESS']).count('* as count').first()).count);
+    }
+  }
   if (permissions.can_assign && ticket.owner_unit_id) result.routing_assignable_agents = await database('support_unit_memberships as member')
     .join('users as agent', 'agent.id', 'member.user_id').where({ 'member.unit_id': ticket.owner_unit_id, 'member.is_available': true, 'agent.is_active': true, 'agent.role': 'IT_AGENT' })
     .whereNot('agent.id', ticket.reporter_id).select('agent.id', 'agent.full_name').orderBy('agent.id');

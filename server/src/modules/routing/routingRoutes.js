@@ -132,7 +132,9 @@ router.get('/routing/me', handle(async (req, res) => {
     return [settings, await trx('support_unit_memberships as member').join('support_units as unit', 'unit.id', 'member.unit_id')
       .where({ 'member.user_id': user.id, 'unit.is_active': true }).select('unit.id', 'unit.name', 'member.is_available').orderBy('unit.id')];
   }, { isolationLevel: 'repeatable read' });
-  res.json({ enabled: true, version: settings.version, units: units.map(unit => ({ ...unit, is_available: Boolean(unit.is_available) })) });
+  const load = await db('tickets').where('assignee_id', user.id).whereIn('status', ['OPEN', 'IN_PROGRESS']).count('* as count').first();
+  res.json({ enabled: true, version: settings.version, open_count: Number(load.count), capacity: settings.max_open_per_agent,
+    units: units.map(unit => ({ ...unit, is_available: Boolean(unit.is_available) })) });
 }));
 router.patch('/routing/availability', handle(async (req, res) => {
   const user = await actor(req); ready();

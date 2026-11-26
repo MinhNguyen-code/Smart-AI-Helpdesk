@@ -7,7 +7,7 @@ import config from '../config/index.js';
 import { db } from '../db/index.js';
 import { requireAuth } from '../middleware/authMiddleware.js';
 import { classifyPriority, calculateDeadlines, assertStatusTransition } from './ticketPolicy.js';
-import { ticketListOptions, filterTicketList, sortTicketList } from './ticketListQuery.js';
+import { ticketListOptions, filterTicketList, sortTicketList, scopeTicketList } from './ticketListQuery.js';
 import { createNotifications } from './notificationService.js';
 import { hasRouting, routingEnabled, routingError } from './routing/routingPolicy.js';
 import { allocateAgent, initialRouting, lockRouting, presentRouting, requireTicketAction, routingRecipients,
@@ -51,7 +51,8 @@ router.get('/agents', handle(async (req, res) => {
 router.get('/tickets', handle(async (req, res) => {
   const options = ticketListOptions(req.query);
   const { page } = options;
-  const query = filterTicketList(ticketQuery(db, req.user), options);
+  const scoped = scope => scopeTicketList(db, ticketQuery(db, req.user), req.user, scope, routingEnabled());
+  const query = filterTicketList(scoped(options.scope), options);
   if (req.query.status) {
     if (!['OPEN', 'IN_PROGRESS', 'RESOLVED'].includes(req.query.status)) fail(400, 'Invalid status');
     query.where('status', req.query.status);
@@ -62,10 +63,20 @@ router.get('/tickets', handle(async (req, res) => {
   }
   const [{ count }] = await query.clone().count('* as count');
   const items = await sortTicketList(query, options.sort).limit(30).offset((page - 1) * 30);
-  const reporters = await db('users').whereIn('id', [...new Set(items.map(item => item.reporter_id))]).select('id', 'full_name');
+  const assigneeIds = [...new Set(items.map(item => item.assignee_id).filter(Boolean))];
+  const reporters = await db('users').whereIn('id', [...new Set([...items.map(item => item.reporter_id), ...assigneeIds])]).select('id', 'full_name');
   const names = new Map(reporters.map(user => [user.id, user.full_name]));
-  res.json({ items: await Promise.all(items.map(item => presentRouting(db, req.user, { ...item, reporter_name: names.get(item.reporter_id) }))),
-    total: Number(count), page, pageSize: 30, routing: routingEnabled() });
+  const staff = ['ADMIN', 'IT_AGENT'].includes(req.user.role);
+  const workloads = staff && assigneeIds.length ? await db('tickets').whereIn('assignee_id', assigneeIds)
+    .whereIn('status', ['OPEN', 'IN_PROGRESS']).select('assignee_id').count('* as count').groupBy('assignee_id') : [];
+  const loads = new Map(workloads.map(row => [row.assignee_id, Number(row.count)]));
+  const queueCounts = {};
+  if (staff) for (const scope of ['all', 'mine', ...(routingEnabled() ? ['team', 'review'] : [])]) {
+    const row = await scoped(scope).count('* as count').first(); queueCounts[scope] = Number(row.count);
+  }
+  res.json({ items: await Promise.all(items.map(item => presentRouting(db, req.user, { ...item,
+    reporter_name: names.get(item.reporter_id), assignee_name: names.get(item.assignee_id) || null }, loads))),
+    total: Number(count), page, pageSize: 30, routing: routingEnabled(), ...(staff ? { queueCounts } : {}) });
 }));
 router.post('/tickets', handle(async (req, res) => {
   const { title, description, impact } = req.body;
@@ -211,6 +222,7 @@ router.patch('/tickets/:id/assign', handle(async (req, res) => {
     const previous = await trx('tickets').where('id', req.params.id).forUpdate().first();
     if (!previous) fail(404, 'Ticket not found');
     if (previous.version !== version) fail(409, 'Ticket changed; refresh before retry');
+    let routingAssignment;
     if (hasRouting(previous)) {
       if (!settings) throw routingError(409, 'STALE_VERSION', 'Tuyến đã thay đổi; tải lại ticket trước khi lưu.');
       await requireTicketAction(trx, req.user, previous, 'assign');
@@ -219,10 +231,12 @@ router.patch('/tickets/:id/assign', handle(async (req, res) => {
       if (previous.assignee_id && (typeof req.body.reason !== 'string' || req.body.reason.trim().length < 3 || req.body.reason.length > 1000)) {
         throw routingError(400, 'REASON_REQUIRED', 'Ghi lý do thay người phụ trách.');
       }
-      await allocateAgent(trx, previous.owner_unit_id, previous.reporter_id, settings, assigneeId, previous.id);
+      const allocation = await allocateAgent(trx, previous.owner_unit_id, previous.reporter_id, settings, assigneeId, previous.id);
+      routingAssignment = { source: 'ASSIGNMENT', configuration_version: settings.version, unit_id: previous.owner_unit_id,
+        ...allocation, capacity: settings.max_open_per_agent };
     }
     await trx('tickets').where('id', previous.id).update({ assignee_id: assigneeId, version: version + 1, updated_at: new Date(),
-      ...(hasRouting(previous) ? { routing_status: 'ASSIGNED' } : {}) });
+      ...(hasRouting(previous) ? { routing_status: 'ASSIGNED', routing_evidence: JSON.stringify(routingAssignment) } : {}) });
     await trx('ticket_history').insert({ ticket_id: previous.id, actor_id: req.user.id, event_type: 'ASSIGNED', old_value: previous.assignee_id && String(previous.assignee_id), new_value: String(assigneeId) });
     await createNotifications(trx, [{ recipient_id: assigneeId, ticket_id: previous.id, notification_type: 'ASSIGNED', title: 'Ticket được phân công', message: `Ticket ${previous.ticket_code}`, deduplication_key: `assign:${previous.id}:${version}` }]);
     if (hasRouting(previous)) await trx('audit_logs').insert({ actor_id: req.user.id, action: 'ROUTING_ASSIGNEE_UPDATED', entity_type: 'ticket', entity_id: String(previous.id),
