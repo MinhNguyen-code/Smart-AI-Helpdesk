@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './previewFixture.js';
 import { mkdir } from 'node:fs/promises';
 
 test('seven wireframe routes render and Rules dialog works in clearly labeled preview', async ({ page }) => {
@@ -15,7 +15,7 @@ test('seven wireframe routes render and Rules dialog works in clearly labeled pr
 
   await page.goto('/kanban?preview=1');
   await expect(page.getByRole('heading', { name: 'Bảng Kanban Tương tác' })).toBeVisible();
-  await expect(page.getByText('Chế độ xem giao diện · Dữ liệu mẫu')).toBeVisible();
+  await expect(page.locator('.preview-bar')).toContainText('Chế độ xem giao diện mẫu');
   await page.screenshot({ path: 'docs/screenshots/day7-03-kanban.png' });
   await page.getByRole('button', { name: /Sập hệ thống quản lý điểm/ }).click();
   await expect(page.getByRole('dialog')).toBeVisible();

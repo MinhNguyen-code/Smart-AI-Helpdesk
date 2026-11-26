@@ -4,7 +4,7 @@ import { ArrowRight, Paperclip, X } from 'lucide-react';
 const imageTypes = ['image/png', 'image/jpeg', 'image/webp'];
 const maxImageBytes = 10 * 1024 * 1024;
 
-export default function CreateTicket({ categories, onSubmit, onCancel, busy, preview }) {
+export default function CreateTicket({ categories, onSubmit, onCancel, busy, preview, idempotent, automaticCategory = false }) {
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState('');
   const [formError, setFormError] = useState('');
@@ -13,6 +13,7 @@ export default function CreateTicket({ categories, onSubmit, onCancel, busy, pre
   const fileInputRef = useRef(null);
   const titleRef = useRef(null);
   const descriptionRef = useRef(null);
+  const attempt = useRef(null);
 
   useEffect(() => {
     if (!file) { setImage(''); return; }
@@ -38,12 +39,18 @@ export default function CreateTicket({ categories, onSubmit, onCancel, busy, pre
     const data = new FormData(event.currentTarget);
     const title = String(data.get('title') || '').trim();
     const description = String(data.get('description') || '').trim();
-    const categoryId = Number(data.get('category'));
+    const categoryId = automaticCategory && data.get('category') === 'auto' ? null : Number(data.get('category'));
     if (!title) { setFormError('Nhập tiêu đề mô tả sự cố.'); titleRef.current?.focus(); return; }
     if (!description) { setFormError('Nhập mô tả chi tiết để đội IT xử lý.'); descriptionRef.current?.focus(); return; }
-    if (!Number.isSafeInteger(categoryId) || categoryId < 1) { setFormError('Chọn danh mục sự cố.'); return; }
+    if (!(automaticCategory && categoryId === null) && (!Number.isSafeInteger(categoryId) || categoryId < 1)) { setFormError('Chọn danh mục sự cố.'); return; }
     setFormError('');
-    onSubmit({ title, description, impact: data.get('impact'), category_id: categoryId }, file);
+    const fields = { title, description, impact: data.get('impact'), category_id: categoryId };
+    if (idempotent && globalThis.crypto?.randomUUID) {
+      const key = JSON.stringify(fields);
+      if (attempt.current?.key !== key) attempt.current = { key, id: globalThis.crypto.randomUUID() };
+      fields.request_id = attempt.current.id;
+    }
+    onSubmit(fields, file);
   }
 
   return <div className="create-page">
@@ -58,7 +65,8 @@ export default function CreateTicket({ categories, onSubmit, onCancel, busy, pre
           <select name="impact" defaultValue="individual"><option value="individual">Cá nhân</option><option value="department">Phòng ban</option><option value="organization">Toàn tổ chức</option></select>
         </label>
         <label>Danh mục *
-          <select name="category" required defaultValue=""><option value="" disabled>Chọn danh mục…</option>{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+          <select key={automaticCategory ? 'automatic' : 'manual'} name="category" required defaultValue={automaticCategory ? 'auto' : ''}><option value="" disabled>Chọn danh mục…</option>{automaticCategory && <option value="auto">Tự động phân loại</option>}{categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}</select>
+          {automaticCategory && <span className="field-hint">Chọn tự động nếu chưa biết danh mục. Nội dung chưa rõ sẽ được Admin điều phối.</span>}
         </label>
       </div>
       <label>Mô tả chi tiết *

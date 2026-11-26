@@ -12,8 +12,8 @@ Các endpoint trong mục 1–8 đã có mã. Các nhóm nghiệp vụ có kiể
 ## 1. Hệ thống
 
 - `GET /api`: metadata API.
-- `GET /api/v1/health`: liveness, trả 200 khi Express chạy.
-- `GET /api/v1/ready`: readiness truy vấn MySQL thật; 200 khi kết nối đúng schema, 503 nếu chưa sẵn sàng.
+- `GET /api/v1/health`: liveness, trả 200 `{ "status": "UP" }` khi Express chạy.
+- `GET /api/v1/ready`: readiness truy vấn MySQL thật và xác minh schema đích; trả 200 `{ "status": "READY" }` hoặc 503 `{ "status": "NOT_READY" }`. Phản hồi công khai không chứa tên schema, runtime hoặc chi tiết kết nối.
 
 ## 2. Xác thực
 
@@ -25,11 +25,15 @@ Các endpoint trong mục 1–8 đã có mã. Các nhóm nghiệp vụ có kiể
 
 ## 3. Ticket Core
 
+Staff work queues use `GET /tickets?scope=all|mine|team|review`. `all` keeps the existing authorized shared list, including resolved tickets. `mine` returns OPEN/IN_PROGRESS assigned to the current staff ID; `team` returns OPEN/IN_PROGRESS belonging to the current user's active group memberships; `review` returns open REVIEW_REQUIRED tickets. END_USER is denied non-all scopes (403), and team/review require routing enabled. Filters/search/sort/pagination apply after the scope. Staff responses include `queueCounts` for global scope totals before text/priority filters. Agent UI shows all/mine/team/review; Admin shows all/review. Permissions for processing remain unchanged.
+
+Routed tickets include the responsible group and assignee name. Group members/Admin additionally receive `assignee_open_count` and a bounded `routing_explanation` describing category/keyword/manual allocation and load at assignment. Outside-team readers/reporters do not receive internal explanation/workload. `GET /routing/me` includes the agent's global open count and configured capacity. Availability pauses new assignment without removing access to existing work.
+
 - `GET /api/v1/categories`: danh mục đang hoạt động.
 - `GET /api/v1/agents`: danh sách `{id, full_name}` IT Agent đang hoạt động; Admin/IT Agent.
-- `GET /api/v1/tickets?page=1&search=...&status=...`: `{items, total, page, pageSize}`; mỗi trang tối đa 30. End-User chỉ xem ticket của mình.
+- `GET /api/v1/tickets?page=1&search=...&status=...&priority=P1&sort=sla`: `{items, total, page, pageSize}`; mỗi trang tối đa 30. End-User chỉ xem ticket của mình. `search` là chuỗi tối đa 200 ký tự, tìm một phần tiêu đề/mã; `priority` nhận P1–P4. `sort` nhận `newest` (API mặc định), `sla` (deadline null xếp cuối) hoặc `priority`; `id DESC` giữ thứ tự ổn định khi bằng nhau. Lọc và sắp xếp trên toàn bộ tập được phân quyền trước khi phân trang; `total` là tổng sau lọc. Query page/priority/sort/search sai kiểu hoặc ngoài giới hạn trả 400. Kanban mặc định chọn SLA và gửi query này lên API, có Trang trước/Trang tiếp, bộ đếm hiển thị/tổng; tìm kiếm debounce 250ms và đổi điều kiện trả về trang 1.
 - `POST /api/v1/tickets`: JSON `{title, description, impact, category_id}`; trả ticket 201. Priority/SLA/history/notification ghi trong cùng transaction.
-- `GET /api/v1/tickets/:id`: ticket, `comments`, `history`, `attachments` metadata; 404 nếu không có quyền xem.
+- `GET /api/v1/tickets/:id`: ticket, `comments`, `history`, `attachments` metadata; 404 nếu không có quyền xem. Với END_USER, `comments` chỉ gồm phản hồi public và `history` không gồm event `COMMENT_ADDED` của ghi chú internal hoặc comment đã mất; ADMIN/IT_AGENT thấy lịch sử đầy đủ.
 - `GET /api/v1/tickets/:id/comments`: phản hồi; End-User chỉ xem phản hồi public.
 - `POST /api/v1/tickets/:id/comments`: JSON `{message, visibility?}`. Chỉ staff được gửi `internal`.
 - `PATCH /api/v1/tickets/:id/assign`: JSON `{assignee_id, version}`; staff, IT Agent chỉ được nhận chính mình.
@@ -89,4 +93,9 @@ Các endpoint kiểm tra vai trò và trạng thái hoạt động từ MySQL, k
 
 - `?preview=1` chỉ hoạt động trong Vite **development mode**; bản build production yêu cầu session thật và không hiển thị liên kết preview. Preview không gọi API nghiệp vụ thật.
 - `/health` và `/ready` được đặt trước API rate limiter để probe phản ánh trạng thái dịch vụ; readiness vẫn truy vấn MySQL.
+- `npm run session:cleanup` đếm session hết hạn sau khi xác minh schema/account đích, không xóa dữ liệu; `npm run session:cleanup -- --apply` mới dọn tối đa 5.000 session hết hạn mỗi lượt và kiểm tra lại hạn ngay trước khi xóa. Chỉ lên lịch ở môi trường đã được phê duyệt và theo dõi số còn lại.
 - Mọi kết nối Knex đặt session MySQL về UTC. Migration chỉ nhắm hai schema `smart_it_helpdesk_new_dev` và `smart_it_helpdesk_new_test` bằng tài khoản migration riêng.
+
+## 10. Phân tuyến theo nhóm — tùy chọn sau migration số 7
+
+Mặc định `TICKET_ROUTING_ENABLED=false`; local đã bật ngày 26/11/2026 theo phê duyệt chủ dự án sau backup/migration số 7 và cấu hình năm hồ sơ TEST (xem [evidence local](phase-reports/LOCAL-ROUTING-TEST-AGENTS-2026-11-26.md)). API cấu hình, availability, category tự động, chuyển nhóm/giao lại, version và quyền xử lý được quy định tại [TICKET_ROUTING_SPEC.md](TICKET_ROUTING_SPEC.md). `routing_status` độc lập với ba trạng thái ticket. IT_AGENT vẫn xem hàng chờ chung; ticket đã phân tuyến chỉ người được giao trong nhóm/Admin được xử lý. Ticket lịch sử null giữ hành vi MVP cho tới khi Admin chủ động chuyển tuyến.

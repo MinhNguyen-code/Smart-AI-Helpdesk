@@ -88,25 +88,33 @@ D:\Smart IT Helpdesk
    - Hoặc chạy độc lập:
      - Backend: `npm run dev:server` (Cổng 5000)
      - Frontend: `npm run dev:client` (Cổng 5173)
-     - SLA Worker: `npm run worker:sla`
+     - Backend kèm SLA worker: `npm.cmd run start:with-sla`.
+     - SLA worker độc lập: `npm.cmd run worker:sla`.
      - Windows supervisor: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File server/scripts/superviseWorkers.ps1`; thêm `-IncludeEmail` chỉ sau khi SMTP hợp lệ.
-     - Availability monitor: `npm.cmd run monitor:availability` (mặc định ghi JSONL theo giờ Asia/Bangkok).
+     - Availability monitor: `npm.cmd run monitor:availability` (mặc định ghi JSONL theo giờ `Asia/Ho_Chi_Minh`; lịch thứ Hai–Sáu 08:00–17:00 cần chủ dự án xác nhận).
      - Tổng hợp kỳ quan sát: `npm.cmd run report:availability`; báo `NOT_VERIFIED` nếu chưa đủ 10 ngày làm việc/95% độ phủ mẫu.
+
+   Chọn một cách chạy SLA worker cho mỗi database. Khi chạy nhiều tiến trình Express, chỉ bật worker ở một tiến trình, hoặc dùng lệnh độc lập / Windows supervisor. `npm run dev` và `npm run dev:server` chỉ chạy Express ở phía backend.
+
+   Worker quét ngay khi Express mở cổng thành công. Mỗi lần chỉ chạy một đợt quét. Worker tiếp tục trang kế sau 1 giây hoặc bắt đầu vòng quét mới sau 60 giây. Khi lỗi, worker ghi mã lỗi và thời gian chờ vào log, rồi thử lại cùng trang sau 1, 2, 4 giây và tăng dần đến tối đa 60 giây. Một lần quét thành công đặt lại thời gian chờ khi lỗi.
+
+   Khi Node nhận Ctrl+C/SIGINT hoặc SIGTERM, worker hủy lượt quét đã lên lịch và chờ lượt hiện tại kết thúc trước khi đóng pool MySQL. Express cũng chờ các request đang xử lý. Node thoát với mã 1 nếu quá 10 giây. Để tự khởi động lại sau khi toàn bộ tiến trình Express thoát, cấu hình trình quản lý tiến trình chạy `node server/src/index.js --with-sla-worker` từ thư mục dự án.
 5. Chạy kiểm thử:
    ```powershell
    npm.cmd test
-   npm.cmd run test:integration
    npm.cmd run test:frontend
    npm.cmd run test:browser
-   npm.cmd run test:browser:api
+   npm.cmd run test:browser:routing
    npm.cmd run test:browser:production
    ```
+
+   Browser suites dùng API fixture và các port riêng 5187/5188/4173; không khởi động backend hoặc dùng phiên Google thật. Bộ production cần `npm.cmd run build` trước. Các lệnh `test:integration` và `test:browser:api` có fixture ghi/xóa; không chạy chúng trên database development/local hoặc production. MySQL integration được chạy trong job CI service cô lập, xác minh schema/account trước khi ghi. Seed hiện chỉ thêm các SLA P1–P4 còn thiếu, không ghi đè policy đã có; không tự chạy seed trên dữ liệu hiện hữu chỉ để kiểm thử.
 
 ---
 
 ## Giao diện theo 7 wireframe
 
-Chạy `npm run dev` rồi mở `http://localhost:5173/login`. Giao diện hiện có trang đăng nhập, tạo yêu cầu, Kanban, chi tiết ticket/SLA, báo cáo, danh sách quy tắc và hộp thoại thêm/sửa quy tắc. Minh họa 3D ở trang đăng nhập dùng Three.js; bảng, biểu mẫu và biểu đồ vẫn là thành phần HTML/React để có thể tương tác và dùng bàn phím.
+Chạy `npm run dev` rồi mở `http://localhost:5173/login`. Giao diện hiện có trang đăng nhập, tạo yêu cầu, Kanban, chi tiết ticket/SLA, báo cáo, danh sách quy tắc và hộp thoại thêm/sửa quy tắc. Trang đăng nhập dùng minh họa SVG tĩnh đã duyệt; bảng, biểu mẫu và biểu đồ là thành phần HTML/React có thể tương tác và dùng bàn phím. Kanban tìm kiếm/lọc/sắp xếp qua API trên toàn bộ hàng chờ được phân quyền, mỗi trang tối đa 30 ticket và có điều khiển chuyển trang.
 
 Trong Vite development, chọn **Xem giao diện mẫu** hoặc mở `http://localhost:5173/kanban?preview=1` để thử giao diện với dữ liệu trong bộ nhớ. Bản build production không có preview và yêu cầu session thật. Chế độ thật dùng Google OIDC, API ticket, quy tắc, SLA, thông báo và báo cáo SQL. Ảnh được lưu riêng tư sau khi tạo ticket; UI báo rõ nếu upload lỗi. `test:browser` kiểm tra giao diện mẫu; `test:browser:api` dùng session fixture chỉ trong schema test để kiểm tra React/API/MySQL, **không** xác nhận đăng nhập Google thật.
 
@@ -116,4 +124,4 @@ Ba vai trò là `ADMIN`, `IT_AGENT`, `END_USER`. Chủ dự án cấu hình các
 
 ## 5. Trạng thái dự án
 
-API Ticket, Rules, ACK/SLA, notification, outbox, analytics và quản trị người dùng có test MySQL trên `smart_it_helpdesk_new_test`. Bảy wireframe có ảnh Playwright preview và các trang API/MySQL test. Checkpoint nghiệm thu dự án vẫn **PARTIAL** cho đến khi nghiệm thu Google ba vai trò thật, SMTP ngoài ứng dụng và kỳ quan sát uptime 99%. Xem báo cáo gốc `docs/phase-reports/FINAL-ACCEPTANCE-2026-11-17.md`, bản tiếp tục `docs/phase-reports/FINAL-ACCEPTANCE-CONTINUATION-2026-11-17.md` và kiểm kê sau đó `docs/phase-reports/PRE-PUSH-AUDIT-2026-11-17.md`. Các báo cáo frontend có ngày tháng nằm trong `docs/phase-reports/`; tài liệu thiết kế đang dùng vẫn ở `docs/FRONTEND_DESIGN_SYSTEM.md`.
+API Ticket, Rules, ACK/SLA, notification, outbox, analytics và quản trị người dùng có test MySQL CI cô lập. Nghiệm thu Google ba vai trò local đã có báo cáo ngày 25/11; source local tổng hợp và PR GitHub được đánh giá riêng. Xem [audit GitHub](docs/phase-reports/GITHUB-FULL-AUDIT-2026-11-26.md) và [bản sửa ổn định 26/11](docs/phase-reports/MVP-STABILITY-FIXES-2026-11-26.md) cho kết quả mới nhất. SMTP được hoãn và không chặn nghiệm thu lõi; Google routing E2E mới, CI cho bản sửa chưa publish, recovery production và uptime 99% vẫn là các phạm vi cần kiểm chứng riêng. Phương án đưa lên web: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md).

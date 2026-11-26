@@ -21,12 +21,16 @@ export async function checkDatabaseHealth() {
     // Verify target database
     const dbNameResult = await db.raw('SELECT DATABASE() AS currentDb');
     const currentDatabase = dbNameResult[0]?.[0]?.currentDb;
+    const routingReady = process.env.TICKET_ROUTING_ENABLED !== 'true' || (
+      await db.schema.hasTable('routing_settings') && await db.schema.hasColumn('tickets', 'routing_status')
+    );
 
     return {
       connected: true,
       targetDatabase: currentDatabase,
       expectedDatabase: currentConfig.connection.database,
       isTargetVerified: currentDatabase === currentConfig.connection.database,
+      routingReady,
       latencyMs,
     };
   } catch (error) {

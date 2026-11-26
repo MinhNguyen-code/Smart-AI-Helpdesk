@@ -29,6 +29,16 @@ test('Admin manages allowlist roles without binding a fake Google identity', asy
     const admin = await fixture('ADMIN');
     const agent = await fixture('IT_AGENT');
     const endUser = await fixture('END_USER');
+    const guardedEmail = `${randomUUID()}@example.invalid`;
+    assert.equal((await request(app).post('/api/v1/users').set('Cookie', admin.cookie)
+      .set('Origin', config.clientUrl).send({ email: guardedEmail, role: 'END_USER' })).status, 403);
+    assert.equal((await request(app).post('/api/v1/users').set('Cookie', admin.cookie)
+      .set('Origin', config.clientUrl).set('X-CSRF-Token', 'wrong')
+      .send({ email: guardedEmail, role: 'END_USER' })).status, 403);
+    assert.equal((await request(app).post('/api/v1/users').set('Cookie', admin.cookie)
+      .set('Origin', 'https://untrusted.example.invalid').set('X-CSRF-Token', token)
+      .send({ email: guardedEmail, role: 'END_USER' })).status, 403);
+    assert.equal(await db('users').where({ email: guardedEmail }).first(), undefined);
     assert.equal((await request(app).get('/api/v1/users')).status, 401);
     assert.equal((await request(app).get('/api/v1/users').set('Cookie', agent.cookie)).status, 403);
     assert.equal((await request(app).get('/api/v1/users').set('Cookie', endUser.cookie)).status, 403);
@@ -58,6 +68,15 @@ test('Admin manages allowlist roles without binding a fake Google identity', asy
     const stored = await db('users').where('id', created.body.id).first();
     assert.equal(stored.google_sub, null);
     assert.equal(stored.is_active, 0);
+    assert.equal((await request(app).get('/api/v1/agents').set('Cookie', agent.cookie)).status, 200);
+    await db('users').where({ id: agent.id }).update({ role: 'END_USER' });
+    assert.equal((await request(app).get('/api/v1/agents').set('Cookie', agent.cookie)).status, 403);
+    await db('users').where({ id: endUser.id }).update({ is_active: false });
+    assert.equal((await request(app).get('/api/v1/auth/me').set('Cookie', endUser.cookie)).status, 401);
+    assert.equal((await request(app).get('/api/v1/notifications').set('Cookie', endUser.cookie)).status, 401);
+    const logout = await mutate(admin.cookie, 'post', '/api/v1/auth/logout', {});
+    assert.equal(logout.status, 204);
+    assert.equal((await request(app).get('/api/v1/auth/me').set('Cookie', admin.cookie)).status, 401);
   } finally {
     for (const sid of sids) await promisify(store.destroy.bind(store))(sid);
     if (ids.length) await db('audit_logs').whereIn('actor_id', ids).delete();

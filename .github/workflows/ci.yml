@@ -1,0 +1,174 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  unit-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Backend unit and API tests
+        run: npm test
+        env:
+          NODE_ENV: test
+      - name: Frontend tests
+        run: npm run test:frontend
+      - name: Production build
+        run: npm run build
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+
+  browser-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VITE_API_BASE_URL: /api/v1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Require a clean checkout without local environment files
+        run: test ! -e .env
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Preview, keyboard and private-file regression (synthetic API only)
+        run: npm run test:browser -- --output=test-results/preview
+      - name: Routing UI contracts (synthetic API only)
+        run: npm run test:browser:routing -- --output=test-results/routing
+      - name: Build production frontend
+        run: npm run build
+      - name: Production guard, states and pagination (synthetic API only)
+        run: npm run test:browser:production -- --output=test-results/production
+      - name: Retain browser failure context
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-regression-evidence
+          path: test-results/
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: ignore
+
+  mysql-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          # Disposable service credentials only; never repository/environment secrets.
+          MYSQL_ROOT_PASSWORD: ci-only-root-password
+          MYSQL_DATABASE: smart_it_helpdesk_new_test
+        # No host ports or persistent volumes: this database exists only for this job.
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      mysql-restore:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-only-restore-root-password
+          MYSQL_DATABASE: smart_it_helpdesk_new_test
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Provision schema-scoped CI accounts inside the service
+        shell: bash
+        env:
+          MYSQL_SERVICE_ID: ${{ job.services.mysql.id }}
+        run: |
+          set -euo pipefail
+          docker exec -i "$MYSQL_SERVICE_ID" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --user=root' <<'SQL'
+          CREATE USER 'sih_new_test_migrate'@'127.0.0.1' IDENTIFIED BY 'ci-only-migration-password';
+          CREATE USER 'sih_new_test'@'127.0.0.1' IDENTIFIED BY 'ci-only-runtime-password';
+          GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, DROP, INDEX, REFERENCES
+            ON smart_it_helpdesk_new_test.* TO 'sih_new_test_migrate'@'127.0.0.1';
+          GRANT SELECT, INSERT, UPDATE, DELETE
+            ON smart_it_helpdesk_new_test.* TO 'sih_new_test'@'127.0.0.1';
+          SQL
+      - name: Install, verify identities, migrate, seed and run MySQL integration tests
+        shell: bash
+        env:
+          MYSQL_SERVICE_ID: ${{ job.services.mysql.id }}
+        run: |
+          set -euo pipefail
+          # Share only the service network namespace. 127.0.0.1 is the disposable
+          # MySQL container, never the runner host. Preserve strict @127.0.0.1 policy.
+          mkdir -p .ci-evidence
+          docker run --rm --interactive --network "container:$MYSQL_SERVICE_ID" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" \
+            --workdir /workspace \
+            --env CI=true --env NODE_ENV=test --env RUN_ROUTING_DB=1 \
+            --env GITHUB_ACTIONS=true --env RUNNER_ENVIRONMENT=github-hosted \
+            --env DB_TEST_HOST=127.0.0.1 --env DB_TEST_PORT=3306 \
+            --env DB_TEST_NAME=smart_it_helpdesk_new_test \
+            --env DB_TEST_USER=sih_new_test \
+            --env DB_TEST_PASSWORD=ci-only-runtime-password \
+            --env DB_TEST_MIGRATION_USER=sih_new_test_migrate \
+            --env DB_TEST_MIGRATION_PASSWORD=ci-only-migration-password \
+            --env SESSION_SECRET=ci-only-session-secret-at-least-32-characters \
+            --env CLIENT_URL=http://localhost:5173 \
+            --env UPLOAD_DIR=/tmp/helpdesk-ci-uploads \
+            node:24-bookworm bash -euo pipefail -s <<'BASH'
+          # Fail closed rather than reading an unexpected environment file.
+          test ! -e .env
+          npm ci --include=dev
+          npm run db:check:test
+          node server/scripts/ciRoutingMigration.js
+          npm run db:migrate:test
+          # Exercise the documented fresh-install seed, without CI-only SLA repair.
+          env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD node server/scripts/databaseCommand.js seed test
+          # Serialized files: ticket/rule fixtures temporarily edit shared SLA rows.
+          # Routing fixtures require this isolated CI job; legacy cases keep routing off.
+          env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD npm run test:integration
+          env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD node server/scripts/ciDatabaseEvidence.js load
+          env -u DB_TEST_MIGRATION_USER -u DB_TEST_MIGRATION_PASSWORD node server/scripts/ciDatabaseEvidence.js prepare-backup
+          BASH
+      - name: Backup and restore only into a second fresh CI service
+        shell: bash
+        env:
+          MYSQL_SERVICE_ID: ${{ job.services.mysql.id }}
+          MYSQL_RESTORE_ID: ${{ job.services.mysql-restore.id }}
+        run: |
+          set -euo pipefail
+          docker exec "$MYSQL_SERVICE_ID" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump --user=root --single-transaction --no-tablespaces --set-gtid-purged=OFF --skip-comments --skip-add-drop-table smart_it_helpdesk_new_test' > .ci-evidence/backup.sql
+          docker exec -i "$MYSQL_RESTORE_ID" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --user=root smart_it_helpdesk_new_test' < .ci-evidence/backup.sql
+          docker exec -i "$MYSQL_RESTORE_ID" sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql --user=root' <<'SQL'
+          CREATE USER 'sih_new_test'@'127.0.0.1' IDENTIFIED BY 'ci-only-runtime-password';
+          GRANT SELECT ON smart_it_helpdesk_new_test.* TO 'sih_new_test'@'127.0.0.1';
+          SQL
+          docker run --rm --network "container:$MYSQL_RESTORE_ID" \
+            --mount "type=bind,source=$GITHUB_WORKSPACE,target=/workspace" --workdir /workspace \
+            --env CI=true --env GITHUB_ACTIONS=true --env RUNNER_ENVIRONMENT=github-hosted \
+            --env NODE_ENV=test --env DB_TEST_HOST=127.0.0.1 --env DB_TEST_PORT=3306 \
+            --env DB_TEST_NAME=smart_it_helpdesk_new_test --env DB_TEST_USER=sih_new_test \
+            --env DB_TEST_PASSWORD=ci-only-runtime-password \
+            node:24-bookworm node server/scripts/ciDatabaseEvidence.js verify-restore
+      - name: Retain synthetic CI evidence without the SQL dump
+        uses: actions/upload-artifact@v4
+        with:
+          name: mysql-operational-evidence
+          path: .ci-evidence/*.json
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error

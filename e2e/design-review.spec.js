@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect } from './previewFixture.js';
 import { mkdir } from 'node:fs/promises';
 
 const folder = 'docs/screenshots/design-review';
@@ -16,9 +16,8 @@ async function capture(page, size) {
     await page.goto(route);
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth), `${name} overflows ${size}`).toBeLessThanOrEqual((size === 'mobile' ? 390 : 1440) + 2);
-    if (name === '01-login' && size === 'desktop') {
-      await page.locator('.scene-card canvas').waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-    }
+    if (name === '01-login' && size === 'desktop') await expect(page.locator('.login-hero-illustration')).toBeVisible();
+    if (name === '01-login' && size === 'mobile') await expect(page.locator('.login-hero-illustration')).toBeHidden();
     await page.screenshot({ path: `${folder}/${size}/${name}.png`, fullPage: size === 'mobile' });
   }
   await page.goto('/kanban?preview=1');
@@ -71,7 +70,7 @@ test('Login uses the static illustration when reduced motion is requested', asyn
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/login');
-  await expect(page.locator('.scene-static')).toBeVisible();
+  await expect(page.locator('.login-hero-illustration')).toBeVisible();
   await expect(page.locator('.scene-card canvas')).toHaveCount(0);
 });
 

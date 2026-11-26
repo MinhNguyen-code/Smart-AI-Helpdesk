@@ -1,5 +1,7 @@
 # SMART IT HELPDESK — THIẾT KẾ CƠ SỞ DỮ LIỆU (DATABASE DESIGN)
 
+> Bổ sung 25/11/2026: migration mới `20261125000007_add_ticket_routing.js` thêm `routing_settings`, `support_units`, `support_unit_memberships`, `category_unit_routes` và nullable `tickets.owner_unit_id/routing_status/routing_evidence`, index unit/status. Không backfill/đổi status/priority/SLA. Local chưa migrate; đặc tả, FK, guard và forward recovery tại [TICKET_ROUTING_SPEC.md](TICKET_ROUTING_SPEC.md). Bản ghi cấu hình tuyến được thay toàn bộ trong transaction Admin có version/audit; đây là thao tác cấu hình có chủ đích, không xóa ticket/history.
+
 ## 1. Cơ Sở Dữ Liệu Mục Tiêu & Nguyên Tắc An Toàn
 
 - **Hệ quản trị CSDL**: MySQL 8.x

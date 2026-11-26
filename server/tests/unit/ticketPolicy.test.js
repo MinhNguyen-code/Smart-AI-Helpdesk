@@ -25,6 +25,24 @@ test('Inactive rules and separate fields do not produce false phrase matches', (
   assert.throws(() => classifyPriority({ ...ticket, impact: 'other' }, []));
 });
 
+test('Direct negation does not escalate a keyword but a later real incident still does', () => {
+  const rules = [
+    { id: 1, keyword: 'mất mạng', priority: 'P1', is_active: true },
+    { id: 2, keyword: 'không vào được LMS', priority: 'P1', is_active: true },
+    { id: 3, keyword: 'lỗi đăng nhập', priority: 'P2', is_active: true },
+  ];
+  const classify = title => classifyPriority({ title, description: '', impact: 'individual' }, rules);
+  for (const title of ['không bị mất mạng', 'không còn mất mạng', 'chưa mất mạng']) {
+    assert.equal(classify(title).priority, 'P3');
+    assert.deepEqual(classify(title).evidence.matches, []);
+  }
+  assert.equal(classify('đã hết lỗi đăng nhập').priority, 'P3');
+  assert.equal(classify('không vào được LMS').priority, 'P1');
+  assert.equal(classify('không bị mất mạng nhưng server vẫn ổn. Mất mạng lại lúc 9 giờ').priority, 'P1');
+  assert.equal(classify('không bị mất mạng nhưng sau đó mất mạng').priority, 'P1');
+  assert.equal(classifyPriority({ title: 'không bị mất mạng', description: '', impact: 'organization' }, rules).priority, 'P1');
+});
+
 test('SLA uses calendar minutes and rejects missing or inconsistent policies', () => {
   const deadlines = calculateDeadlines('2026-11-11T23:55:00Z', { is_active: true, response_minutes: 15, resolution_minutes: 120 });
   assert.equal(deadlines.response_deadline_at.toISOString(), '2026-11-12T00:10:00.000Z');

@@ -6,13 +6,14 @@
  */
 export async function seed(knex) {
   // 1. Initial SLA Policies
-  const existingSla = await knex('sla_policies').select('id');
-  if (existingSla.length === 0) {
-    await knex('sla_policies').insert([
+  // Migrations may already have created P2/P4. Fill each missing policy and
+  // never overwrite targets or active flags configured by an administrator.
+  await knex('sla_policies').insert([
       { priority: 'P1', response_minutes: 15, resolution_minutes: 120, is_active: true },
+      { priority: 'P2', response_minutes: 60, resolution_minutes: 480, is_active: true },
       { priority: 'P3', response_minutes: 240, resolution_minutes: 1440, is_active: true },
-    ]);
-  }
+      { priority: 'P4', response_minutes: 480, resolution_minutes: 2880, is_active: true },
+    ]).onConflict('priority').ignore();
 
   // 2. Initial Categories
   const existingCategories = await knex('categories').select('id');
